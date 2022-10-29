@@ -91,6 +91,10 @@ FQDN:
 service-name.namespace-name.svc.cluster-domain.example (cluster.local most of the time)
 If same namespace, just use: service-name
 
+Create service in an imperative way:
+
+kubectl expose pod messaging --port=6379 --name messaging-service
+
 6. Ingress
 
 external -> ingress -> Service
@@ -318,6 +322,7 @@ as volume:
 volumeMounts:
 - name: configmap-volume
   mountPath: /etc/config/configmap
+  readOnly: true (!!!!!!)
 
 volumes:
 - name: configmap-volume
@@ -329,30 +334,51 @@ volumes:
 
 ------------------------
 
-1.
--- on controlplane: --
+1. Install a cluster
+
+
+2. Upgrade a cluster
+
+-- controlplane --
+
+FIRST CHECK FOR TAINS AND HEALTH!!!
 kubectl drain controlplane --ignore-daemon-sets
+
 apt update
 apt install kubeadm=1.24.0-00 kubectl=1.24.0-00
+
+kubeadm upgrade plan
 kubeadm upgrade apply v1.24.0
+
 apt install kubelet=1.24.0-00
 systemctl daemon-reload
 systemctl restart kubelet
+
 kubectl uncordon controlplane
---
+
+-- worker node --
+
+FIRST CHECK FOR TAINS AND HEALTH!!!
 kubectl drain node01 --ignore-daemon-sets
+
 ssh node01
 apt install kubeadm=1.24.0-00 kubectl=1.24.0-00
+
 kubeadm upgrade node
+
 apt install kubelet=1.24.0-00
 systemctl daemon-reload
 systemctl restart kubelet
---
+
 ssh controlplane
 kubectl uncordon node01
 
-2.
-describe command reveals the configuration of the etcd service. Look for the value of the option --listen-client-urls for the endpoint URL
+3. Backup and restore ETCD
+
+Describe command reveals the configuration of the etcd service.
+Look for the value of the option --listen-client-urls for the endpoint URL.
+
+Example backup command:
 
 ETCDCTL_API=3 etcdctl \
 --cacert=/etc/kubernetes/pki/etcd/ca.crt \
@@ -360,7 +386,7 @@ ETCDCTL_API=3 etcdctl \
 --key=/etc/kubernetes/pki/etcd/server.key \
 snapshot save /opt/etcd-backup.db
 
---
+Example restore command:
 
 ETCDCTL_API=3 etcdctl --data-dir=/var/lib/from-backup snapshot restore /opt/etcd-backup.db
 
@@ -369,34 +395,14 @@ vi /etc/kubernetes/manifests/etcd.yaml :
 	  path: /var/lib/from-backup
 
 
-3.
+4. Custom columns
+
 kubectl get nodes -o=custom-columns=<COLUMN_NAME>:<JSON_PATH>,<><>
 
-4.
+5. View controlplane config
+
 kubectl config view
 kubectl config view --kubeconfig=/....
 https://controlplane:6443
 
-5.
-kubectl set image deployment/myapp-deployment nginx=nginx:1.9.1
-
-6.
-apiVersion: v1
-kind: Pod
-metadata:
-  name: mypod
-spec:
-  containers:
-  - name: mypod
-    image: redis
-    volumeMounts:
-    - name: foo
-      mountPath: "/etc/foo"
-      readOnly: true
-  volumes:
-  - name: foo
-    secret:
-      secretName: mysecret
-
-7.
-kubectl expose pod messaging --port=6379 --name messaging-service
+8.
