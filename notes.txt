@@ -1,6 +1,7 @@
 https://github.com/bmuschko/cka-crash-course/blob/master/exercises/04-etcd-backup-restore/solution/solution.md
+https://github.com/bmuschko/cka-crash-course/tree/master/exercises
 
-kubectl get pods -o wide --namespace 
+kubectl get pods -o wide --namespace
 kubectl get pods --namespace kube-system - see if for eg scheduler works
 kubectl get pods --selector app=App1
 kubectl get all
@@ -57,10 +58,10 @@ kubectl create -f my-new-pod.yaml
 
 watch kubectl get pods
 
-Create a DaemonSet - first generate YAML file for Deployment kubectl create deployment elasticsearch --image=k8s.gcr.io/fluentd-elasticsearch:1.20 
+Create a DaemonSet - first generate YAML file for Deployment kubectl create deployment elasticsearch --image=k8s.gcr.io/fluentd-elasticsearch:1.20
 -n kube-system --dry-run=client -o yaml > fluentd.yaml. Remove replicas, strategy and status fields. Kind from Deployment to DaemonSet.
 
-Static pods - ONLY pods, created by the kubelet by scanning a dir. 
+Static pods - ONLY pods, created by the kubelet by scanning a dir.
 Any dir on the host, passed as an option for kubelet.service. pod-manifest-path=/etc/kubernetes/manifests
 OR (in kubeadm)
 kubelet.service : --config=kubeconfig.yaml
@@ -82,7 +83,7 @@ Kubeadm deploys the scheduler as a pod (/etc/kubernetes/manifests/kube-scheduler
 copy it, change name of the pod and add option under container (scheduler-name)
 leader-elect - choose leader of scheduling activity for HA setup (only one can lead at a time)
 To get multiple scheds working, either set leader-elect to false if you don't have many masters, if you do,
-pass - --lock-object-name=my-custom-scheduler 
+pass - --lock-object-name=my-custom-scheduler
 
 kubectl get events (see if custom scheduler works for example)
 kubectl logs my-custom-scheduler --namespace=kube-system
@@ -133,7 +134,7 @@ volumes:
 - name: app-config-volume
   configMap:
     name: app-config
-	
+
 kubectl create secret generic app-secret --from-literal=DB_Host=mysql
 kubectl get secrets
 kubecrtl describe secrets
@@ -145,7 +146,7 @@ inject env secret:
 envFrom:
   - secretRef:
     name: app-secret
-	
+
 kubectl -n elastic-stack exec -it app -- cat /log/app.log
 
 kube-controller-manager --pod-eviction-timeout=5m0s
@@ -347,7 +348,7 @@ and client certs for etcd server communiaction
 --etcd-cafile
 --etcd-certfile
 --etcd-keyfile
-and kubelet certs 
+and kubelet certs
 --kubelet-certificate-authority
 --kubelet-client-certificate
 --kubelet-client-key
@@ -426,7 +427,7 @@ spec:
   - server auth
   request: (not as plain text, base64) - cat jane.csr | base64 | tr -d "\n"
     LKADJFHf...
-	
+
 kubectl get csr - view requests
 kubectl certificate approve jane
 kubectl certificate deny agent-smith
@@ -438,7 +439,7 @@ Which component is responsible for cert realated stuff? Controller manager. It h
 Make sure the cert files are ok in /etc/kubernetes/manifests/kube-controller-manager.yaml
 --cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt
 --cluster-signing-key-file=/etc/kubernetes/pki/ca.crt
-	
+
 Kubeconfig
 
 curl for pods (like get po)
@@ -532,7 +533,7 @@ rules:
   resources: ["pods"]
   verbs: ["get", "create", "update"]
   resourceNames: ["blue", "orange"]
-  
+
 kubectl describe pod kube-apiserver-controlplane -n kube-system
 
 kubectl create role developer --namespace=default --verb=list,create,delete --resource=pods
@@ -671,20 +672,20 @@ PVClaims select volume based on requirements.
 You can still use labels though
 labels:
   name: my-pv
-  
+
 selector:
   matchLabels:
     name: my-pv
-	
+
 1:1 relationship, no other claims utilize remaining volume cap if not fully used
 If no volumes available, pvc is pending and then auto bound to a new one if available
-	
+
 kubectl get persistentvolumeclaim
 kubectl get persistentvolume
 
 What happens when a claim is deleted? By default data retianed.
 persistentVolumeReclaimPolicy: Retain (waits for manual delete, can't reuse) / Delete / Recycle (scrubbed before making available to other claims)
-	
+
 This was static provisioning of volumes.
 StorageClasses let create volumes automatically when app requires it.
 
@@ -847,7 +848,7 @@ iptables -nvL -t nat
 
 Container runtimes 1. create namespace
 then 2. do the rest with one program:
-bridge add 2e34dcf34 /var/run/netns/2e34dcf34 
+bridge add 2e34dcf34 /var/run/netns/2e34dcf34
 To standardize, we have CNI.
 Set of standards that define how programs should be developed to solve container runtime network challenges.
 Bridge program is a plugin for CNI.
@@ -1023,14 +1024,14 @@ spec:
 		  containerPort: 80
 		- name: https
 		  containerPort: 443
-		
+
 Nginx has a set of config options. In order to decouple these, create a configmap and pass taht in.
 
 kind: ConfigMap
 apiVersion: v1
 metadata:
   name: nginx-configuration
-  
+
 Empty one will do. Just add it to the yaml.
 
 Now service
@@ -1052,14 +1053,14 @@ spec:
 	name: https
   selector:
     name: nginx-ingress
-	
+
 To monitor and configure stuff, need a service account with right roles, clusterroles and rolebindings
 
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: nginx-ingress-serviceaccount
-  
+
 Ingress resources
 
 You can configure rules to say simply forward all inc traffic to a single application
@@ -1076,7 +1077,7 @@ spec:
   backend:
     serviceName: wear-service
 	servicePort: 80
-	
+
 With more paths:
 
 Rule1: http://my-online-store.com and .../wear .../watch
@@ -1108,7 +1109,7 @@ metadata:
 spec:
   rules:
   - http:
-      paths: 
+      paths:
 	  - path: /wear
 	    backend:
 		  serviceName: wear-service
@@ -1117,7 +1118,7 @@ spec:
 	    backend:
 		  serviceName: watch-service
 		  servicePort: 80
-		  
+
 kubectl describe ingress ingress-wear-watch
 Default backend: default-http-backend:80 (none) - this is where user doesn't match rules
 Remember to deploy such service - with 404 or something.
@@ -1144,7 +1145,7 @@ spec:
 	  - backend:
 	    serviceName: watch-service
 		servicePort: 80
-		
+
 Changes from 1.20+:
 
 apiVersion: networking.k8s.io/v1
@@ -1198,7 +1199,7 @@ spec:
     name: https
   selector:
     name: nginx-ingress
-	
+
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -1217,7 +1218,7 @@ spec:
         backend:
           service:
            name: wear-service
-           port: 
+           port:
             number: 8080
       - path: /watch
         pathType: Prefix
@@ -1234,7 +1235,7 @@ kubeadm - steps:
 1. Have multiple VMs/machines
 2. Designate master node, rest is workers
 3. Install container runtime on all nodes
-4. Install kubeadm on all nodes			
+4. Install kubeadm on all nodes
 5. Init master server (first net requiremets - the pod network).
 6. Join workers to master node.
 
@@ -1293,7 +1294,7 @@ kubectl config view --kubeconfig=/root/my-kube-config
 kubectl get pv --sort-by=.spec.capacity.storage -o=custom-columns=NAME:.metadata.name,CAPACITY:.spec.capacity.storage > /opt/outputs/pv-and-capacity-sorted.txt
 
 kubectl config view --kubeconfig=my-kube-config -o jsonpath="{.contexts[?(@.context.user=='aws-user')].name}" > /opt/outputs/aws-context-name
-	
+
 Pod
 
 apiVersion: v1
@@ -1352,7 +1353,7 @@ spec:
     limits:
 	  memory: "2Gi"
 	  cpu: 2
-	  
+
 ReplicaSet
 
 apiVersion: apps/v1
@@ -1401,7 +1402,7 @@ spec:
 	    maxSurge: 25%
 		maxUnavailable: 25%
 	  type: RollingUpdate
-		
+
 Service
 
 apiVersion: v1
@@ -1455,7 +1456,7 @@ spec:
     defaultRequest:
       cpu: 0.5
     type: Container
-	
+
 DaemonSet (one copy of pod on each node, if node added, replica added) kube-proxy, weave-net, logging&monitoring
 
 apiVersion: apps/v1
@@ -1474,7 +1475,7 @@ spec:
 	  containers:
 	  - name: monitoring-agent
 	    image: monitoring-agent
-		
+
 Scheduler
 
 apiVersion:v1
@@ -1491,17 +1492,17 @@ spec:
 	- --leader-elect=true (+ true HA/false nonHA)
 	- --scheduler-name=my-custom-scheduler (+)
 	- --lock-object-name=my-custom-scheduler (+ HA)
-	
+
 	image: k8s.gcr.io/kube-scheduler-amd64:1.11.3
 	name: kube-scheduler
-	
+
 TO A POD DEFINITION ADD:
 
 spec:
   containers:
     bbbbb
   schedulerName: my-custom-scheduler
-  
+
 ConfigMap
 
 apiVersion: v1
@@ -1511,7 +1512,7 @@ metadata:
 data:
   APP_COLOR:blue
   APP_MODE: prod
-  
+
 Secret
 
 apiVersion: v1
@@ -1522,7 +1523,7 @@ data:
   DB_Host: bXlzcWw (from echo -n 'mysql' | base64)
   DB_User: cm9vdA==
   DB_Password: cGFzd3Jk
-  
+
 initContainer
 
 apiVersion: v1
@@ -1540,7 +1541,7 @@ spec:
   - name: init-myservice
     image: busybox
     command: ['sh', '-c', 'git clone <some-repository-that-will-be-used-by-application> ; done;']
-	
+
 When a POD is first created the initContainer is run, and the process in the initContainer must run to a completion before the real container hosting the application starts.
 
 
@@ -1592,7 +1593,7 @@ spec:
   signerName: kubernetes.io/kube-apiserver-client
   usages:
   - client auth
-  
+
 KubeConfig File
 
 apiVersion: v1
@@ -1630,7 +1631,7 @@ rules:
 - apiGroups: [""]
   resources: ["ConfigMap"]
   verbs: ["create"]
-  
+
 devuser-developer-binding.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -1644,7 +1645,7 @@ roleRef:
   kind: Role
   name: developer
   apiGroup: rbac.authorization.k8s.io
-  
+
 cluster-admin-role.yaml
 
 apiVersion: rbac.authorization.k8s.io/v1
@@ -1655,7 +1656,7 @@ rules:
 - apiGroups: [""]
   resources: ["nodes"]
   verbs: ["list", "get", "create", "delete"]
-  
+
 cluster-admin-role-binding.yaml
 
 apiVersion: rbac.authorization.k8s.io/v1
@@ -1670,7 +1671,7 @@ roleRef:
   kind: ClusterRole
   name: cluster-administrator
   apiGroup: rbac.authorization.k8s.io
-  
+
   ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
@@ -1697,7 +1698,7 @@ roleRef:
   kind: ClusterRole
   name: storage-admin
   apiGroup: rbac.authorization.k8s.io
-  
+
 Network Policy
 
 apiVersion: networking.k8s.io/v1
@@ -1719,7 +1720,7 @@ spec:
     ports:
 	- protocol: TCP
 	  port: 3306
-	  
+
 Volumes
 
 apiVersion: v1
@@ -1740,13 +1741,13 @@ spec:
     hostPath:
 	  path: /data
 	  type: Directory
-	  
+
   volumes:
   - name: data-volume
     awsElasticBlockStore
 	  volumeID: <volume-id>
 	  fsType: ext4
-	  
+
 PersistentVolume
 
 apiVersion: v1
@@ -1764,7 +1765,7 @@ spec:
   awsElasticBlockStore:
     volumeID: <volume-id>
 	fsType: ext4
-	
+
 PersistentVolumeClaim
 
 apiVersion: v1
@@ -1777,7 +1778,7 @@ spec:
   resources:
     requests:
 	  storage: 500Mi
-	  
+
 Then in pod:
 
 apiVersion: v1
@@ -1795,7 +1796,7 @@ spec:
     - name: mypd
 	  persistentVolumeClaim:
 	    claimName: myclaim
-		
+
 ^ Same in ReplicaSets/Deployments
 
 apiVersion: v1
@@ -1810,7 +1811,7 @@ spec:
     storage: 100Mi
   hostPath:
     path: /pv/log
-	
+
 kind: PersistentVolumeClaim
 apiVersion: v1
 metadata:
@@ -1843,7 +1844,7 @@ spec:
   resources:
     requests:
 	  storage: 500Mi
-	  
+
 Larger version of storage class (not needed)
 
 apiVersion: storage.k8s.io/v1
@@ -1854,7 +1855,7 @@ provisioner: kubernetes.io/gce-pd
 parameters:
   type: pd-standard (pd-ssd)
   replication-type: none (regional-pd)
-  
+
 Example - create silver with std, gold with ssd, platinum ssd replicated
 
 ---
@@ -1886,8 +1887,8 @@ spec:
            name: pay-service
            port:
             number: 8282
-			
-			
+
+
 MOCK 3:
 
 Pods authenticate to the API Server using ServiceAccounts. If the serviceAccount name is not specified, the default service account for the namespace is used during a pod creation.
@@ -1965,4 +1966,3 @@ spec:
   - ports:
     - protocol: TCP
       port: 80
-
