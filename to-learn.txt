@@ -466,3 +466,25 @@ kubectl get persistentvolume --sort-by=.spec.capacity.storage
 kubectl config view
 kubectl config view --kubeconfig=/....
 https://controlplane:6443
+
+6. Create a Role and RoleBinding
+
+Try to get pods as user:
+kubectl get pods -n beebox-mobile --kubeconfig /home/cloud_user/dev-k8s-config
+or:
+kubectl auth can-i get pods --as=dev --namespace=beebox-mobile
+
+Create Role:
+kubectl create role pod-reader --verb=get,watch,list --resource=pods,pods/log -n beebox-mobile
+
+Create RoleBinding:
+kubectl create rolebinding pod-reader-binding -n beebox-mobile --user=dev --role=pod-reader
+
+7. Resource usage:
+Need metrics-server to see resource usage. Wait a few minutes after installing.
+kubectl top pod -n beebox-mobile --sort-by=cpu --selector app=auth
+
+
+
+
+
