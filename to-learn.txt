@@ -397,7 +397,7 @@ vi /etc/kubernetes/manifests/etcd.yaml :
 
 4. Custom columns
 
-kubectl get nodes -o=custom-columns=<COLUMN_NAME>:<JSON_PATH>,<><>
+kubectl get nodes -o=custom-columns=<COLUMN_NAME>:<JSON_PATH>,<>:<>
 
 5. View controlplane config
 
