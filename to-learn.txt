@@ -1,47 +1,61 @@
+1. Important commands for deployments:
+
 kubectl scale
-kubectl rollout status (what's going on wihth rolling update)
+kubectl rollout status (what's going on with rolling update)
 kubectl set image deployment/my-deployment nginx=nginx:1.19.0 --record
--- record - records rolling deployment, easy to roll back
+  ( -- record - records rolling deployment, easy to roll back )
 kubectl rollout history deployment.v1.apps/my-deployment
-kubectl rollout undo deployment.v1.apps/my-deployment --to-revision=1 (rev from rollout history)
-without --to-revision - one back
+kubectl rollout undo deployment.v1.apps/my-deployment --to-revision=1
+  ( without --to-revision - one back )
+
+2. Pod FQDN:
 
 pod-ip-address.namespace-name.pod.cluster.local
 192-168-10-100.default.pod.cluster.local
 
-three dashes!
+3. Remember about three dashes!
 
-NetworkPolicy
-By default pods are completely open. Any network policy selects pods - pod becomes isolated
+4. NetworkPolicy
+By default pods are completely open.
+Any network policy selects a pod - it becomes isolated.
 
 Components:
-podSelector - to which pods in namespace policy applies. Uses labels
+podSelector - to which pods in namespace policy applies. Uses labels.
+
 spec:
   podSelector:
     matchLabels:
       role: db
 
 from - selects ingress traffic to be allowed
+
 to - selects egress traffic to be allowed
+
 spec:
   ingress:
     - from:
   egress:
     - to:
 
-examples:
+Examples:
+
 spec:
   ingress:
     - from:
       - podSelector:
         matchLabels:
           app: db
+
+---
+
 spec:
   ingress:
     - from:
       - namespaceSelector:
         matchLabels:
           app: db
+
+---
 
 spec:
   ingress:
@@ -58,29 +72,29 @@ spec:
         - protocol: TCP
           port: 80
 
-Traffic has to match pod/ns/cidr AND port
+Traffic has to match pod/ns/cidr AND port.
 
-NodeSelector/NodeName
+4. NodeSelector/NodeName
+NodeSelector uses labels, NodeName - exact node.
 
-Services
+5. Services
 
-Endpoints!!!
+Endpoints - 1 endpoint for each pod.
+kubectl get endpoints svc-clusterip
 
 port: 80 - service listens on this port
 targetPort: 80 - service routes to this port on the pod
-nodePort: 30080
-
-kubectl get endpoints svc-clusterip
+nodePort: 30080 - port on the node traffic is routed to
 
 Services also get DNS names.
 FQDN:
-service-name.namespace-name.svc.cluster-domain.example (cluster.local)
-If same ns: my-Service
+service-name.namespace-name.svc.cluster-domain.example (cluster.local most of the time)
+If same namespace, just use: service-name
 
-ingress
+6. Ingress
 
 external -> ingress -> Service
-Need ingress controller
+Needs an ingress controller installed (nginx probably)
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -97,27 +111,34 @@ spec:
           name: my-service
           port:
             number: 80
+
 Or route to named ports:
-IN SERVICE:
+
+In Service:
 ports:
   - name: web (ingress will look at the service port, auto change)
     protocol: TCP
     port: 80
     targetPort: 8080
-IN INGRESS:
+
+In Ingress:
 backend:
   service:
     name: svc-clusterip
     port:
       name: web
 
-VOLUMES:
+7. volumes:
+
+Course of action if using PVs:
+
 1. Create Persistent Volume
 2. Create Pers. Vol. Claim
-3. In pod add Volume (PVC)
-4. In container add Volume Mount
+3. In pod add Volume (PVC actually)
+4. In container add a Volume Mount
 
 Pod:
+
 spec:
   containers:
   - name: busybox
@@ -130,11 +151,12 @@ spec:
     hostPath:
       path: /data
 
-You can mount same volume to many containers - great way of interaction.
+You can the mount same volume to many containers - great way of interaction.
 
 Common volume types:
 hostPath - directory on the node
 emptyDir - temporary, dynamically created, useful for simply sharing data between containers on a pod
+persistentVolumeClaim - PVC
 
 Persistent volumes:
 
@@ -151,6 +173,11 @@ spec:
   hostPath:
     path: /var/output
 
+persistentVolumeReclaimPolicy: Recycle
+Retain - keeps all data. Manually clean and prepare to reuse
+Delete - delete RESOURCE automatically (only in cloud storage)
+Recycle - delete DATA in storage automatically, allow reuse
+
 Storage Class:
 
 apiVersion: storage.k8s.io/v1
@@ -159,12 +186,6 @@ metadata:
   name: slow
 provisioner: kubernetes.io/no-provisioner
 allowVolumeExpansion: true (default false)
-
-For PersistentVolume
-persistentVolumeReclaimPolicy: Recycle
-Retain - keeps all data. Manually clean and prepare to reuse
-Delete - delete RESOURCE automatically (only in cloud storage)
-Recycle - delete DATA in storage automatically, allow reuse
 
 Persistent Volume Claim:
 
@@ -180,7 +201,7 @@ spec:
     requests:
       storage: 100Mi
 
-PVC automatically binds to a PV after creation if finds a good one
+PVC automatically binds to a PV after creation if finds a fitting one.
 
 In Pod:
 
@@ -191,32 +212,34 @@ volumes:
 
 You can easily resize PVCs if PV allows and StorageClass allows.
 
-TROUBLESHOOTING:
-1. kube-apiserver down:
+8. TROUBLESHOOTING:
+
+1. Is kube-apiserver down:
   - kubectl might not work
   - Connection to the server was refused (if kubeconfig is set up correctly!)
   - make sure docker/containerd and kubelet are up on controlplane nodes
-2. node status:
+2. See node status:
   - check status of nodes kubectl get nodes
   - kubectl describe node (one which is not READY)
-3. If node is down, maybe a service is down on the node
+3. If node is down, maybe a service is down on the node:
   - see kubelet and docker/containerd
   - systemctl status/start/enable kubelet
-4. Check system pods in a kubeadm cluster (kube-system namespace)
+4. Check system pods in a kubeadm cluster (kube-system namespace):
   - kubectl get po -n kube-system
   - describe the ones that are down
 
 Cluster and node logs:
 journalctl -u kubelet
-journalctl -u docker
+journalctl -u docker/containerd
 
 kubectl logs -n kube-system podname
 
-Unhealthy pods:
+Unhealthy pods?:
 - kubectl get po
 - kubectl describe po
 - kubectl exec podname -c containername -- command
 
+Interactive shell:
 kubectl exec busybox --stdin --tty -- /bin/sh
 
 Checking container logs:
@@ -237,23 +260,26 @@ In netshoot:
 
 KUBELET DOES NOT RUN AS A POD IN KUBEADM CLUSTER!!!
 
+9. Command
 
 kubectl exec (-it) <pod name> -c <container-name> -- <command>
 kubectl exec -i -t my-pod --container main-app -- /bin/bash
 kubectl run <pod name> --command -- <command>
+
+Two ways of adding commands to a container:
 
 command: ['sh', '-c', 'while true; do sleep 3600; done']
 command:
   - sh
   - '-c'
 
-kubectl api-resources
+10. kubectl api-resources
 
---record (see command later in describe)
+11. kubectl create sa my-serviceaccount -n default
 
-kubectl create sa my-serviceaccount -n default
+12. kubectl top (first install metrics-server)
 
-kubectl top (first install metrics-server)
+13. Probes
 
 livenessProbe: / startupProbe: / readinessProbe:
   exec:
@@ -265,7 +291,7 @@ livenessProbe: / startupProbe: / readinessProbe:
 	port: 80
   failureThreshold (for startupProbe)
 
-ConfigMaps and Secrets:
+14. ConfigMaps and Secrets:
 
 ConfigMap:
 data:
@@ -278,7 +304,8 @@ data:
 Creating secret value:
 echo -n "blabla" | base64
 
-using in pod:
+Using these in a pod:
+
 env:
 - name: CONFIGMAPVAR
   valueFrom:
