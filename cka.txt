@@ -1,0 +1,1968 @@
+https://github.com/bmuschko/cka-crash-course/blob/master/exercises/04-etcd-backup-restore/solution/solution.md
+
+kubectl get pods -o wide --namespace 
+kubectl get pods --namespace kube-system - see if for eg scheduler works
+kubectl get pods --selector app=App1
+kubectl get all
+kubectl get all --selector env=prod,bu=finance,tier=frontend
+kubectl describe pod nginx
+
+kubectl run nginx --image nginx -n namespace123
+kubectl run redis -l tier=db --image=redis:alpine
+kubectl create -f nginx.yaml
+kubectl create deployment ... --dry-run=client -o yaml > dep.yaml
+kubectl create deployment webapp --image=kodekloud/webapp-color --replicas=3
+kubectl apply -f nginx.yaml
+kubectl edit pod nginx
+kubectl delete pod nginx
+kubectl replace -f nginx.yaml --force
+
+kubectl scale replicaset replicaset1 --replicas=3
+
+kubectl get ns --no-headers | wc -l
+kubectl get pods --all-namespaces | grep blue
+
+kubectl expose pod redis --port=6379 --name redis-service
+kubectl run custom-nginx --image=nginx --port=8080
+kubectl run httpd --image=httpd:alpine --port=80 --expose
+--port=-1: The port that this container exposes.  If --expose is true, this is also the port used by the service that is created.
+
+kubectl taint nodes node-name key=value:taint-effect
+NoSchedule - don't schedule pods
+PreferNoSchedule - try to avoid scheduling
+NoExecute - don't schedule pods and evict existing pods if they don't tolerate taint
+kubectl taint nodes node1 app=blue:NoSchedule
+kubectl escribe node kubemaster | grep Taint (NoSchedule)
+kubectl describe node node01 | grep -i taints
+kubectl taint nodes node1 app=blue:NoSchedule- - untaint
+
+kubectl label nodes node-1 size=Large
+
+NodeAffinity types:
+requiredDuringSchedulingIgnoredDuringExecution
+preferredDuringSchedulingIgnoredDuringExecution
+(planned) requiredDuringSchedulingRequiredDuringExecution
+
+kubectl describe node node01 - see labels
+kubectl label node node01 color=blue
+
+default requirements: 0.5 CPU, 256Mi RAM
+default limits: 1 CPU, 512Mi RAM
+
+For example you cannot edit the environment variables, service accounts, resource limits (all of which we will discuss later) of a running pod
+
+kubectl get pod webapp -o yaml > my-new-pod.yaml
+kubectl delete pod webapp
+kubectl create -f my-new-pod.yaml
+
+watch kubectl get pods
+
+Create a DaemonSet - first generate YAML file for Deployment kubectl create deployment elasticsearch --image=k8s.gcr.io/fluentd-elasticsearch:1.20 
+-n kube-system --dry-run=client -o yaml > fluentd.yaml. Remove replicas, strategy and status fields. Kind from Deployment to DaemonSet.
+
+Static pods - ONLY pods, created by the kubelet by scanning a dir. 
+Any dir on the host, passed as an option for kubelet.service. pod-manifest-path=/etc/kubernetes/manifests
+OR (in kubeadm)
+kubelet.service : --config=kubeconfig.yaml
+kubeconfig.yaml : staticPodPath: /etc/.....
+For static pods, docker ps, not kubectl get po if running on worker node.
+Kubelet can also do this while in a cluster - can take inputs from different sources. kube-apiserver is through API endpoints.
+Apiserver is aware of the static pods though, there's a mirror object (ro) created.
+ps -aux | grep kubelet
+--config=/var/lib/kubelet/config.yaml
+
+kubectl run --restart=Never --image=busybox static-busybox --dry-run=client -o yaml --command -- sleep 1000 > /etc/kubernetes/manifests/static-busybox.yaml
+
+k8s can have multiple scheduler
+kube-scheduler.service
+--scheduler-name=default-scheduler
+my-custom-scheduler.service
+--scheduler-name=my-custom-scheduler
+Kubeadm deploys the scheduler as a pod (/etc/kubernetes/manifests/kube-scheduler.yaml)
+copy it, change name of the pod and add option under container (scheduler-name)
+leader-elect - choose leader of scheduling activity for HA setup (only one can lead at a time)
+To get multiple scheds working, either set leader-elect to false if you don't have many masters, if you do,
+pass - --lock-object-name=my-custom-scheduler 
+
+kubectl get events (see if custom scheduler works for example)
+kubectl logs my-custom-scheduler --namespace=kube-system
+
+kubectl create -n kube-system configmap my-scheduler-config --from-file=/root/my-scheduler-config.yaml
+
+kubectl top node / pod etc
+
+kubectl logs -f event-simulator-pod - logs specific to the container inside pod
+If you run logs with multiple containers in the pod, specify container name
+kubectl logs -f event-simulator-pod event-simulator
+
+kubectl rollout status deployment/myapp-deployment
+kubectl rollout history deployment/myapp-deployment
+Deployment strategies:
+1. Destroy all and create new versions (recreate)
+2. Take down old/bring up new one by one (rolling update)
+Default strategy is rolling update (2).
+Do changes in yaml, kubectl apply -f a.yaml
+or
+kubectl set image deployment/myapp-deployment nginx=nginx:1.9.1
+If you run describe deployment, notice when recreate was used, old replicaset was scaled down to 0. Then scaled back up
+If rolling, replicaset was scaled down one at a time
+
+Rollback
+kubectl rollout undo deployment/myapp-deployment
+
+docker run -e APP_COLOR=pink simple-webapp-color
+
+kubectl create configmap app-config --from-literal=APP_COLOR=blue --from-literal....
+kubectl create configmap app-config --from-file=app_config.properties
+kubectl get configmaps
+kubectl describe configmaps
+
+inject env configmap:
+envFrom:
+  configMapRef:
+    name: app-config
+OR for single env
+env:
+  - name: APP_COLOR
+    valueFrom:
+	  configMapKeyRef:
+	    name: app-config
+		key: APP_COLOR
+OR volume
+volumes:
+- name: app-config-volume
+  configMap:
+    name: app-config
+	
+kubectl create secret generic app-secret --from-literal=DB_Host=mysql
+kubectl get secrets
+kubecrtl describe secrets
+kubectl get secret app-secret -o yaml (to see hashed values)
+decode with
+echo -n 'bXxcafW=' | base64 --decode
+
+inject env secret:
+envFrom:
+  - secretRef:
+    name: app-secret
+	
+kubectl -n elastic-stack exec -it app -- cat /log/app.log
+
+kube-controller-manager --pod-eviction-timeout=5m0s
+kubectl drain node-1 (gracefully terminate the pods and recreate on another node, mark node as unschedulable)
+kubectl uncordon node-1
+kubectl cordon node-1 (mark unschedulable, but don't terminate/move pods)
+kubectl drain node01 --ignore-daemonsets
+
+kubeadm upgrade plan
+kubeadm upgrade apply
+apt-get upgrade -y kubeadm=1.12.0-00
+kubeadm upgrade apply v1.12.0
+kubectl get nodes
+apt-get upgrade -y kubelet=1.12.0-00
+systemctl restart kubelet
+kubectl get nodes - master upgraded
+Worker nodes:
+kubectl drain node-1
+apt-get upgrade -y kubeadm=1.12.0-00
+kubeadm upgrade node
+apt-get upgrade -y kubelet=1.12.0-00
+kubeadm upgrade node config --kubelet-version v1.12.0
+systemctl restart kubelet
+on master - kubectl uncordon node-1
+
+backup:
+kubectl get all --all-namespaces -o yaml > bup.yaml
+Many more resource groups need to be considered.
+Use Velero for example
+etcd:
+backup etcd itself
+--data-dir=/var/lib/etcd - can backup this
+also has builtin snapshot solution
+etcdctl snapshot save snapshot.db
+etcdctl snapshot status snapshot.db
+restore:
+service kube-apiserver stopped
+etcdctl snapshot restore snapshot.db --data-dir /var/lib/etcd-from-backup
+it creates new cluster, new members, new data dir
+reconfigure new data directory in etcd.service
+systemctl daemon-reload
+service etcd restart
+service kube-apiserver start
+remember to specify certs and cluster enpoint, eg:
+etcdctl snapshot save snapshot.db --endpoints=https://127.0.0.1:2379 --cacert=/etc/etcd/ca.crt --cert=/etc/etcd/etcd-server.crt --key=/etc/etcd/etcd-server.key
+To make use of etcdctl for tasks such as back up and restore, make sure that you set the ETCDCTL_API to 3
+export ETCDCTL_API=3
+
+ETCDCTL_API=3 etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key snapshot save /opt/etcd-backup.db
+
+
+kubectl config get-clusters
+kubectl config view
+kubectl config use-context cluster1
+etcd as a pod - stacked etcd, not external
+find external etcd - ps -ef | grep etcd and kubectl -n kube-system describe pod kube-apiserver-cluster2-controlplane
+find external etcd ip - also ps -ef
+ETCDCTL_API=3 etcdctl --endpoints..... member list
+kubectl describe  pods -n kube-system etcd-cluster1-controlplane  | grep advertise-client-urls
+kubectl describe  pods -n kube-system etcd-cluster1-controlplane  | grep pki
+vi /etc/systemd/system/etcd.service
+
+kubectl create serviceaccount sa1
+kubectl get serviceacount
+
+static password file
+static token file
+certificates
+identity services (ldap/kerberos etc)
+
+create user-details.csv (password,user,u0001,optionally group1)
+pass as option to kube-apiserver ( --basic-auth-file=user-details.csv in kube-apiserver.service or pod definition if kubeadm /etc/kubernetes/manifests/kube-apiserver.yaml)
+authenticate through api:
+curl -v -k https://master-node-ip:6443/api/v1/pods -u "user1:password123"
+token file: --token-auth-file=user-details.csv
+looks like: fasdkjfhasdjgjh,user10,u0010,group1
+curl -v -k https://... --header "Authorization: Bearer fasdkjfhasdjgjh"
+These are not recommended. Consider volume mount while providing auth file in kubeadm setup.
+Setup role based authorization for new users.
+
+public key - .crt, .pem
+private key - .key, -key.pem (has part "key")
+
+KUBE-API SERVER:
+apiserver.crt (cert with pubkey)
+apiserver.key (privkey)
+
+ETCD SERVER:
+etcdserver.crt
+etcdserver.key
+
+KUBELET SERVER (on worker nodes with http api):
+kubelet.crt
+kubelet.key
+
+CLIENT COMPONENTS (administrators through kubectl or rest api)
+
+ADMIN:
+admin.crt
+admin.key
+
+KUBE-SCHEDULER (client accessing the apiserver):
+scheduler.crt
+scheduler.key
+
+KUBE-CONTROLLER-MANAGER (another client):
+controller-manager.crt
+controller-manager.key
+
+KUBE-PROXY:
+kube-proxy.crt
+kube-proxy.key
+
+Also, for example kubeapi communicates with etcd server.
+kubeapi is the only one that talks to etcd, so kubeapi is a client for etcd.
+uses the same keys for this though. You can generate new keys for this too
+Same with comms kubeapi - kubelet
+
+You need to have at least 1 cert authority in the cluster.
+Also can have another one specifically for etcd.
+
+CA keys:
+ca.crt
+ca.key
+
+Cert creation:
+
+CA certs:
+first create a privkey:
+openssl genrsa -out ca.key 2048
+cert signing request:
+openssl req -new -key ca.key -subj "/CN=KUBERNETES-CA" -out ca.csr
+sing it:
+openssl x509 -req -in ca.csr -signkey ca.key -out ca.crt
+self signed by the ca, using its own private key
+
+Client certs:
+admin:
+openssl genrsa -out admin.key 2048
+openssl req -new -key admin.key -subj "/CN=kube-admin/O=system:masters" -out admin.csr
+(doesn't need to be admin, but will be in the logs)
+openssl x509 -req -in admin.csr -CA ca.crt -CAkey ca.key -out admin.crt
+(signed by the CA this time)
+
+How to identify this cert as the admin, privileged? Add group details for the user in the cert.
+Group named system masters. Mention this in the cert signing request (/O=system:masters)
+
+Same process for all other components taht access apiserver.
+
+Scheduler, controller manager - prefix with system.
+So:
+KUBE-ADMIN
+SYSTEM:KUBE-SCHEDULER
+SYSTEM:KUBE-CONTROLLER-MANAGER
+KUBE-PROXY
+
+Now you can use this cert to authenticate instead of name/pass.
+curl https://kube-apiserver:6443/api/v1/pods --key admin.key --cert admin.crt --cacert ca.crt
+Or move all of this in config file kube-config.yaml. Will do this.
+
+All server/clients need a copy of ca root cert, remember. Specify the ca root as well when creating them.
+
+ETCD SERVER generation:
+name it ETCD-SERVER
+Can deploy it HA as a cluster. We must have additional peer certs.
+Specify the certs while starting the etcd server. eg in etcd.yaml
+--key-file
+--cert-file
+--peer-cert-file
+etc
+
+KUBE-APISERVER:
+Goes by different names:
+kubernetes
+kubernetes.default
+kubernetes.default.svc
+kubernetes.default.svc.cluster.local (full name)
+ip addresses etc
+All these names need to be in the generated cert.
+Commands for the apiserver:
+openssl genrsa -out apiserver.key 2048
+openssl req -new -key apiserver.key -subj "/CN=kube-apiserver" -out apiserver.csr -config openssl.cnf
+openssl.cnf:
+[req]
+...
+[alt_names]
+DNS.1 = kubernetes
+...
+IP.1 = x.x.x.x
+...
+
+openssl x509 -req -in apiserver.csr -CA ca.crt -CAkey ca.key -out apiserver.crt
+
+Where are we going to specify those keys?
+In the service config file.
+--cluent-ca-file
+--tls-cert-file
+and client certs for etcd server communiaction
+--etcd-cafile
+--etcd-certfile
+--etcd-keyfile
+and kubelet certs 
+--kubelet-certificate-authority
+--kubelet-client-certificate
+--kubelet-client-key
+
+kubelet server
+need a key cert pair for each node
+Naming - after nodes. node01, node02, node03
+Use them in kubelet-config.yaml
+clientCAFile
+tlsCertFile
+tlsPrivateKeyFile
+
+Client certs for kubelet - kubeapi comms
+naming - right names in right formats!
+system:node:node01 , group SYSTEM:NODES
+
+Health check of certs in a cluster:
+1. How was the cluster setup? hard way or kubeadm
+hard way - all certs were generated by yourself, see:
+cat /etc/systemd/system/kube-apiserver.service
+Kubeadm - see:
+cat /etc/kubernetes/manifests/kube-apiserver.yaml and rest of pods
+
+First create a list of cert files used, their pods, names, organization, issues, dates etc. See excel spreadsheet
+First look for definition files:
+cat /etc/kubernetes/manifests/kube-apiserver.yaml
+Now look inside each certificate. For example, apiserver crt file.
+openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text -noout
+Subject: CN=kube-apiserver
+Next alternative names, issuer, validity
+
+Logs:
+journalctl -u etcd.service -l (when looking from scratch)
+Find certs there.
+If kubeadm, use:
+kubectl logs etcd-master
+If kubectl doesn't work, docker ps -a and docker logs contid
+
+Instead of docker, sometimes crictl
+crictl ps -a, crictl logs container-id
+
+Certificates API:
+
+New user creates a cert and signing req, admin takes req and gets signed with ca server using ca servers privkey and root cert
+Send signed cert back to new user.
+Every time cert expires, we follow the same process. Keep rotating cert files.
+
+Where is the ca server exactly? It's just a pair of key and cert files we've generated.
+Protect them and store in a secure environment. This server that stores it, becames the CA server.
+Can keep it on master node.
+
+As no of users increases, we need an automated way to manage singing reqs and rotation.
+Kube has a builtin certificates api.
+Now you send the sign request through api call.
+Admin gets the signing request, creates a kube api object called certificate signing request.
+
+1. Create CertificateSigningRequest Object
+2. Review Requests - by kubectl
+3. Approve Requests - by kubectl
+4. Share Certs to Users
+
+user creates a key:
+openssl genrsa -out jane.key 2048
+openssl req -new -key jane.key -subj "/CN=jane" -out jane.csr
+admin takes the key and creates the certsigningrequestobject:
+apiVersion: certificates.k8s.io/v1beta1
+kind: CertificateSigningRequest
+metadata:
+  name: jane
+spec:
+  groups:
+  - system:authenticated
+  usages:
+  - digital signature
+  - key encipherment
+  - server auth
+  request: (not as plain text, base64) - cat jane.csr | base64 | tr -d "\n"
+    LKADJFHf...
+	
+kubectl get csr - view requests
+kubectl certificate approve jane
+kubectl certificate deny agent-smith
+kubectl get csr jane -o yaml (gets base64)
+echo "LS0...Qo=" |  base64 --decode - and share with user
+
+Which component is responsible for cert realated stuff? Controller manager. It has CSR-APPROVING and CSR-SIGNING controllers etc
+
+Make sure the cert files are ok in /etc/kubernetes/manifests/kube-controller-manager.yaml
+--cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt
+--cluster-signing-key-file=/etc/kubernetes/pki/ca.crt
+	
+Kubeconfig
+
+curl for pods (like get po)
+curl https://my-kube-playground:6443/api/v1/pods --key admin.key --cert admin.crt --cacert ca.crt
+same with kubectl:
+kubectl get pods --server my-kube-playground:6443 --client-key admin.key --client-certificate admin.crt --certificate-authority ca.crt
+better move it to kubeconfig:
+kubectl get pods --kubeconfig config
+By default, config is in $HOME/.kube/config
+
+config has: users, clusters and context. Contexts associate users with clusters (Admin@Production)
+example written down at the bottom
+
+kubectl config view
+kubectl config use-context prod-user@production (will update config file)
+
+kubectl config --kubeconfig=/root/my-kube-config use-context research
+
+API Groups (paths)s
+curl https://kube-master:6443/version
+curl https://kube-master:6443/api/v1/pods
+API is grouped into multiple groups, based on purpose.
+/metrics /health /version /api /apis /logs
+
+core group and named group
+core:
+/api/v1/namespaces(pods,endpoints,events,bindings,secrets...)
+named: (more organized, for newer features)
+/apis/apps(extensions,networking.k8s.io,storage.k8s.io)/v1/deployments(replicasets,statefulsets)/list(get,create,delete) <-- verbs
+view these at kubernetes cluster:
+curl http://localhost:6443 -k
+curl http://localhost:6443/apis -k | grep "name"
+
+Can start kubectl proxy client.
+kubectl proxy
+Then no need to specify access creds in curl
+curl http://localhost:8001 -k
+KUBE PROXY != KUBECTL PROXY !!!!!!
+
+Authorization - once you get access, what can you do?
+Node, ABAC, RBAC, Webhook
+Node authorization:
+Kubelet accesses apiserver to read info, reports info about nodes.
+Handled by the Node Authorizer (system:node group!).
+
+ABAC - Attribute based auth, associate user/group with a set of permissions
+Good for a dev - view, create, delete pod.
+Create a JSON policy, pass to apiserer
+{"kind": "Policy", "spec": {"user": "dev-user", "namespace": "*", "resource": "pods", "apiGroup": "*"}}
+They're difficult to manage.
+
+RBAC - Role-based access control
+Define rule - eg for developers, with a set of permissions, then associate developers with the role
+On change, modify role and all users are affected.
+
+Webhook - outsource auth mechanisms. Externally. Eg Open Policy Agent.
+Kube will make api calls to the agent.
+
+AlwaysAllow
+
+AlwaysDeny
+
+In kubeapiserver service, set:
+--authorization-mode=Node,RBAC,Webhook (default is AlwaysAllow). Order matters
+
+Creating Roles - down example
+kubectl create -f developer-role.yaml
+Now role binding - down example
+kubectl create -f devuser-developer-binding.yaml
+Remember about namespaces!!!
+Add ns to metadata (not sure role or binding. maybe role)
+kubectl get roles
+kubectl get rolebindings
+kubectl describe role developer
+kubectl describe rolebinding devuser-developer-binding
+See if you have access to a resource as user
+kubectl auth can-i create deployments
+kubectl auth can-i delete nodes
+As admin, can impersonate another user
+kubectl auth can-i create deployments --as dev-user
+kubectl auth can-i create pods --as dev-user --namespace test
+
+ResourceNames - for example restrict access to just blue and orange pods
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "create", "update"]
+  resourceNames: ["blue", "orange"]
+  
+kubectl describe pod kube-apiserver-controlplane -n kube-system
+
+kubectl create role developer --namespace=default --verb=list,create,delete --resource=pods
+kubectl create rolebinding dev-user-binding --namespace=default --role=developer --user=dev-user
+
+Cluster roles: -------------------------
+Roles and their bindings were namespaced (or default if not specified)
+Resources can be either namespaced or cluster-scoped
+Cluster scoped examples:
+nodes, PV, clusterroles, clusterrolebindings, certificatesingningrequests, namespaces
+kubectl api-resources --namespaced=true/false
+
+Example of clusterrole at the bottom
+kubectl create -f cluster-admin-role.yaml
+Now binding
+kubectl create -f cluster-admin-role-binding.yaml
+
+You can create a cluster role for namespaced resource too (all namespaces).
+
+kubectl create serviceaccount dashboard-sa
+kubectl get serviceaccount
+kubectl describe serviceaccount dashboard-sa
+Token stored in a secret - dashboard-sa-token-kbbdm
+kubectl describe secret dashboard-sa-token-kbbdm
+Used as auth bearer token talking to api
+curl https://,,, -insecure --header "Authorization: Bearer eyJhbG.."
+Create SA, assign permissions with RBAC, export token and use it to config your 3rd party app.
+What if the app is hosted on the cluster itself?
+Then whole process of exporting token and configuring the app can be simplified.
+Mount SA token secret as a volume for the app.
+kubectl get serviceaccount - default is already there (for each namespace)
+Every created pod gets this default acc mounted as a volume by default.
+3 files in the volume - token, ca.crt, namespace
+Default acc very restricted - only very basic api queries.
+To add sa, modify pod definition like
+spec:
+  serviceAccountName: dashboard-sa
+If want no SA:
+automountServiceAccountToken: false
+
+Old SAs are not that secure.
+TokerRequestAPI tokens: audience bound, time bound, object bound - more secure
+Since 1.22 new pod no longer relies on SA secret token. Token with a defined lifetime is generated
+through the SA API and mounted as a projected volume in the pod.
+projected:
+  defaultMode: 420
+  sources:
+  - serviceAccountToken:
+    expirationSeconds: 3607
+	path: token
+1.24 - reduction of secret-based sa tokens
+When you create a SA, it no longer automatically creates a token access secret.
+Now use:
+kubectl create token dashboard-sa
+Now it will also have expiry date (usually 1 hr default)
+Still want old-style token?
+type: kubernetes.io/service-account-token
+metadata:
+  annotations:
+    kubernetes.io/service-account.name: dashboard-sa
+
+Login to a private registry
+kubectl create secret docker-registry regcred --docker-server= --docker-username= --docker-password= --docker-email=
+in pod def:
+spec:
+  imagePullSecrets:
+    - name: regcred
+
+docker run --user=1001 --cap-add MAC_ADMIN
+Can configure security at pod or container level.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-pod
+spec:
+  securityContext:
+    runAsUser: 1000
+    capabilities:
+      add: ["MAC_ADMIN"]
+  containers:
+  - name: ubuntu
+    image: ubuntu
+	command: ["sleep", "3600"]
+	securityContext:
+	  ...
+
+
+Flannel doesn't support Network Policies
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+  namespace: prod (if not default)
+spec:
+  podSelector:
+    matchLabels:
+	  role: db
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+	    matchLabels:
+		  name: api-pod
+	  namespaceSelector:
+	    matchLabels:
+		  name: prod (set labels on namespace!)
+	- ipBlock:
+	    cidr: 192.168.5.10/32
+    ports:
+	- protocol: TCP
+	  port: 3306
+  egress:
+  - to:
+    - ipBlock:
+	  cidr: 192.168.5.10/32
+	ports:
+	- protocol: TCP
+	  port: 80
+
+- podSelector:
+  namespaceSelector
+  ^ LIKE AN AND OPERATION
+- podSelector: - api-pod in same namespace
+- namespaceSelector - ANY pod from within prod namespace
+^ LIKE OR OPERATION!!!
+
+What if we have a server outside cluster? Pod selector won't work!
+We know the IP though!
+Configure net policy to allow traffic from IPs (added to def higher up)
+
+PVClaims select volume based on requirements.
+You can still use labels though
+labels:
+  name: my-pv
+  
+selector:
+  matchLabels:
+    name: my-pv
+	
+1:1 relationship, no other claims utilize remaining volume cap if not fully used
+If no volumes available, pvc is pending and then auto bound to a new one if available
+	
+kubectl get persistentvolumeclaim
+kubectl get persistentvolume
+
+What happens when a claim is deleted? By default data retianed.
+persistentVolumeReclaimPolicy: Retain (waits for manual delete, can't reuse) / Delete / Recycle (scrubbed before making available to other claims)
+	
+This was static provisioning of volumes.
+StorageClasses let create volumes automatically when app requires it.
+
+Define a provisioner like Google Storage that can auto provision storage on GCloud and attach that to pod.
+That's dynamic provisioning of volumes.
+definition bottom
+No PV definition needed now.
+Now create specific yamls of pvc def (storageClassName: google-storage)
+PV is created, but automatically by the storage class
+https://kubernetes.io/docs/concepts/storage/storage-classes/#local
+
+ip link
+ip addr
+ip addr add 192.168.1.10/24 dev eth0
+ip route
+route
+ip route add 192.168.1.0/24 via 192.168.2.1
+cat /proc/sys/net/ipv4/ip_forward
+
+/etc/hosts
+/etc/resolv.conf:
+nameserver 192.168.1.100
+search mycompany.com prod.mycompany.com
+/etc/nsswitch.conf: - dns order
+hosts: flies dns
+nslookup www.google.com (doesn't consider /etc/hosts!)
+dig www.google.com
+
+Net Namespaces
+ip netns add red
+ip netns add blue
+ip netns
+ip link
+ip netns red ip link
+or
+ip -n red link
+arp
+ip netns exec red arp
+route
+ip netns exec red route
+
+Connect two nses with a virtual cable (pipe)
+
+ip link add veth-red type veth peer name veth-blue
+Attach interfaces to nses
+ip link set veth-red netns red
+ip link set veth-blue netns blue
+ip -n red addr add 192.168.15.1 dev veth-red
+ip -n blue addr add 192.168.15.2 dev veth-blue
+bring up the links
+ip -n red link set veth-red up
+ip -n blue link set veth-blue up
+ping red-blue
+ip netns exec red ping 192.168.15.2
+ip netns red arp:
+blue
+ip netns exec blue arp:
+red
+arp
+no idea
+
+What if we have more nses?
+Create a virtual network inside host. Virtual switch and connect nses to it.
+Linux Bridge, Open vSwitch etc
+We'll use Linux Bridge.
+
+Add new interface to the host:
+ip link add v-net-0 type bridge ( for host it's just another interface)
+ip link set dev v-net-0 up
+For namespaces, it's like a switch though.
+Connect nses to the new vswitch
+Remember the cable red-blue? Now we connect all nses to the bridge. Get rid of old vable.
+ip -n red link del veth-red (deletes both ends automatically).
+Now new cables ns-bridge.
+ip link add veth-red type veth peer name veth-red-br
+ip link add veth-blue type veth peer name veth-blue-br
+now connect links to ns and bridge
+ip link set veth-red netns red
+ip link set veth-red-br master v-net-0
+same for blue:
+ip link set veth-blue netns blue
+ip link set veth-blue-br master v-net-0
+Addresses and up:
+ip 0n red addr add 192.168.15.1 dev veth-red
+ip -n blue addr add 192.168.16.2 dev veth-blue
+ip -n red link set veth-red up
+ip -n blue link set veth-blue up
+Same for orange and gray ns
+
+Will host see the nses? No.
+If we want it really?
+For the host, vswitch is a network interface
+All we need to do is assign ip to the bridge iface
+ip addr add 192.168.15.5/24 dev v-net-0
+Now it works, is still private and restricted to the host.
+No outside world ingress or egress.
+How to configure the bridge to reach lan network through the ethernet port?
+Ping of outside device from blue won't work.
+No routing info in ip netns exec blue route.
+Add entry to the routing table.
+Localhost is the gateway that connects the networks.
+ip netns exec blue up route add 192.168.1.0/24 via 192.168.15.5. (external network ipand bridge ip of host)
+Still won't work.
+Need nat on host as a gateway so it can send messages to the lan in its own name, from its own address.
+iptables -t nat -A POSTROUTING -s 192.168.15.0/24 -j MASQUERADE (masquerade with its own ip)
+Ping from blue works!
+Now connect nses to internet:
+ip netns exec blue ip route add default via 192.168.15.5
+Connectivity from outside to namespaces:
+Two options:
+1. give identity of private network to the second host (add ip route entry to the 2nd host) - bad
+2. add forwarding rules using iptables to say any traffic coming to port 80 on localhost is to be forwarded to port 80 on the blue ns ip
+iptables -t nat -A PREROUTING --dport 80 --to-destination 192.168.15.2:80 -j DNAT
+
+While testing the Network Namespaces, if you come across issues where you can't ping one namespace from the other, make sure you set the NETMASK while setting IP Address. ie: 192.168.1.10/24
+ip -n red addr add 192.168.1.10/24 dev veth-red
+Another thing to check is FirewallD/IP Table rules. Either add rules to IP Tables to allow traffic from one namespace to another. Or disable IP Tables all together (Only in a learning environment).
+
+docker run --network none nginx - no connectivity to each other or outside work
+docker run --network host nginx - attached to host network. no isolation cont - host. App available on port 80 on host with no mapping
+docker run --network bridge nginx - internal priv network created to which containers attach to. Each container gets internal ip
+
+Deeper look at bridge network.
+Docker after install creates bridge network called bridge. On the host it has name docker0.
+docker network ls
+bridge:
+ip link:
+docker0
+Docker basically does ip link add bridge
+
+ip addr - docker 0 has 172.17.0.1/24
+ip netns
+b1234vdh3 - docker ns
+There's a hack for seeing docker nses in material section - LOOOOOOK!!!!!!!!
+docker inspect will show the namespace in SandboxKey
+For this lecture, container = network ns
+How does Docker attach container to the bridge?
+Creates a v cable with 2 infaces on the ends.
+ip link:
+One end attached to docker0 bridge
+ip -n b31... link:
+eth0 other end
+ip -n b31... addr:
+ip of container
+Same procedure followed every time a container is created
+Odd and even iface pairs form a pair like 11-12, 9-10 etc
+
+Port mapping
+Curl from host on container 80 will work
+From outside host, won't.
+To allow external users to access containerized app, docker gives port mapping option.
+docker run -p 8080:80 nginx
+How does Docker do that?
+We'd do:
+iptables -t nat -A PREROUTING -j DNAT --dport 8080 --to-destination 80
+Docker does:
+iptables -t nat -A DOCKER -j DNAT --dport 8080 --to-destination 172.17.0.3:80
+See it in:
+iptables -nvL -t nat
+
+Container runtimes 1. create namespace
+then 2. do the rest with one program:
+bridge add 2e34dcf34 /var/run/netns/2e34dcf34 
+To standardize, we have CNI.
+Set of standards that define how programs should be developed to solve container runtime network challenges.
+Bridge program is a plugin for CNI.
+Example plugins: bridge, vlan, ipvlan, macvlan, windows
+dhcp, host-local
+3rd party: weaveworks, flannel, cilium, nsx, calico etc
+All of them implement CNI standards.
+One is not in this list - Docker. It doesn't implement standards.
+It has CNM - Container Network Model, another standard but similar. Plugins don't natively integrate with docker.
+But you can use Docker with CNI with workarounds. For example manually invoke bridge plugin on a no network container.
+That's how Kubernetes does it.
+
+Each kube node must have at least 1 network iface, unique hostname and unique mac.
+Be careful cloning VMs.
+Open ports: 6443 on master - apiserver, workers etc access kubeapi via this port.
+kubelets listen on 10250. Kubelets can be on master node too.
+Kube scheduler - 10251. controller-manager 10252. Worker nodes expose services for ext access on 30000 - 32767
+etcd - 2379
+additional 2380 so etcd clients can communicate with each other for multi master
+
+ip link show cni0
+ip route show default
+netstat -nplt
+
+- every pod should have its unique ip
+- every pod should communicate with every other pod in the same node (with its own ip)
+- every pod should communicate with every other pod on other nodes without NAT (with its own ip)
+
+kubelet.service
+--network-plugin=cni
+--cni-bin-dir=/opt/cni/bin
+--cni-conf-dir=/etc/cni/net.d
+ps-aux | grep kubelet - see same
+ls /opt/cni/bin - all the plugins as execs
+ls /etc/cni/net.d - config files like 10-bridge.conf (bridge config file)
+ipam in cni config - ip ranges. can set type from host-local to dhcp
+
+WeaveWorks Weave
+Weave has an agent/peer on each node. Each stores a topology of the entire setup.
+Creates own bridge on the nodes - weave. Assigns ips to each network.
+kubectl exec busybox ip route
+- can be attach to many bridges - docker and weave for example. What path packet takes, depends on the route configured on the container.
+Weave makes sure pods get the correct route configured to reach the agent. Agent takes care of other pods.
+When packets get sent from one one to another, weave intercepts them and identifies its on a separate network.
+Encapsulates the packet into a new one, with new source/dest, sends it. On the other side agent grabs it, unpacks and delivers to the pod.
+You can deploy agents manually or as pods.
+kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 tr -d '\n')"
+If cluster is deployed with kubeadm and weave plugin, weave are pods on nodes.
+kubectl get pods -n kube-system
+kubectl logs weave-net-5gcmb weave -n kube-system
+
+ps -aux | grep kubelet | grep --color container-runtime
+ls /etc/cni/net.d/ - see which cni works now
+What binary executable file will be run by kubelet after a container and its associated namespace are created?
+Look at the type field in file /etc/cni/net.d/10-flannel.conflist
+
+IP address management
+
+CNI Plugin assigns IPs to containers
+ip addr show weave
+ip route - def gateway
+
+ClusterIP - access within cluster
+NodePort - access from outside on chosen port on all nodes + like clusterip
+
+kube-proxy --proxy--mode [userspace | iptables | ipvs]
+default is iptables
+When service is created, kube assigns ip to it.
+Range of these is specified in:
+kube-api-server --service-cluster-ip-range ipNet (d: 10.0.0.0/24)
+
+iptables -L -t nat | grep db-service
+cat /var/log/kube-proxy.log
+
+What network range are the nodes in the cluster part of?
+ip addr
+
+What is the range of IP addresses configured for PODs on this cluster?
+kubectl logs <weave-pod-name> weave -n kube-system
+
+What is the IP Range configured for the services within the cluster?
+cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep cluster-ip-range
+
+What type of proxy is the kube-proxy configured to use?
+kubectl logs <kube-proxy-pod-name> -n kube-system
+
+kube-proxy is deployed with a daemonset
+
+DNS records are not created by default, can enable it, Name is ip with dashes instead of dots.
+
+cluster.local -> svc -> apps -> web-service
+cluster.local -> pod -> apps -> 10-244-2-5
+
+Coredns - 2 pods in a replicaset within deployment
+cat /etc/coredns/Corefile
+Number of pligins there (errors, health, kubernetes, prometheus, proxy, cache, reload)
+kubernetes cluster.local blahblah
+pods insecure - create records for pods
+If it can't solve a record, request forwarded to ns specified in coredns's /etc/resolv.conf set to use ns from the kubernetes node.
+The core file is passed into the pod as a configMap object. You can edit it to change config.
+Pods need to point to coredns server.
+cat /etc/resolv.conf
+nameserver x.x.x.x
+search default.svc.cluster.local .....
+--- no entries for pods! always fqdn of pods! ------
+There is service kube-dns - its ip is the nameserver on pods. Automatically. Kubelet configs it.
+In kubelet's config file it's specified.
+cat /var/lib/kubelet/config.yaml
+
+Identify the DNS solution implemented in this cluster
+kubectl get pods -n kube-system
+What is the IP of the CoreDNS server that should be configured on PODs to resolve services?
+kubectl get service -n kube-system (clusterip value)
+What is the root domain/zone configured for this kubernetes cluster?
+kubectl describe configmap coredns -n kube-system
+
+From the hr pod nslookup the mysql service and redirect the output to a file /root/CKA/nslookup.out
+kubectl exec -it hr -- nslookup mysql.payroll > /root/CKA/nslookup.out
+
+Ingress - like L7 lb built into the cluster
+Remeber you still need to expose an ingress as nodeport or cloud lb.
+
+Without ingress:
+1. deploy a reverse proxy like nginx / haproxy / traefik
+2. Config - routes, certificates etc
+
+Ingress is kind of the same. First deploys a supported solution (any of listed above)
+And then sets rules to configure ingress.
+The solution is an ingress controller, rules are ingress resources.
+Resources are created with yamls.
+
+Kube cluster doens't come with an ingress built in by default.
+If you create resources, they won't simply work.
+
+First deploy an ingress controllers. Number of solutions.
+GCE (google), nginx, contour, haproxy, traefik, istio.
+GCE and nginx are supported and maintained by kube project.
+We'll use nginx.
+
+It's not another nginx server - nginx itself is just its part. It has lots of other stuff.
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: nginx-ingress-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+	  name: nginx-ingress
+  template:
+    metadata:
+	  labels:
+	    name: nginx-ingress
+	spec:
+	  containers:
+	    - name: nginx-ingress-controller
+		  image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.21.0
+	  args:
+	    - /nginx-ingress-controller
+		- --configmap=$(POD_NAMESPACE)/nginx-configuration
+	  env:
+	    - name: POD_NAME
+		  valueFrom:
+		    fieldRef:
+			  fieldPath: metadata.name
+		- name: POD_NAMESPACE
+		  valueFrom:
+		    fieldRef:
+			  fieldPath: metadata.namespace
+	  ports:
+	    - name: http
+		  containerPort: 80
+		- name: https
+		  containerPort: 443
+		
+Nginx has a set of config options. In order to decouple these, create a configmap and pass taht in.
+
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: nginx-configuration
+  
+Empty one will do. Just add it to the yaml.
+
+Now service
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-ingress
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+	name: http
+  - port: 443
+    targetPort: 443
+	protocol: TCP
+	name: https
+  selector:
+    name: nginx-ingress
+	
+To monitor and configure stuff, need a service account with right roles, clusterroles and rolebindings
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nginx-ingress-serviceaccount
+  
+Ingress resources
+
+You can configure rules to say simply forward all inc traffic to a single application
+Or route traffic to different applications based on the url (/wear /watch etc)
+Or route user based on domain name (wear.website, watch.website)
+
+ingress-wear.yaml
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-wear
+spec:
+  backend:
+    serviceName: wear-service
+	servicePort: 80
+	
+With more paths:
+
+Rule1: http://my-online-store.com and .../wear .../watch
+Path /wear
+Path /watch
+Path /
+
+Rule2: http://wear.my-online-store.com/ and .../returns .../support
+Path /
+Path /returns
+Path /support
+
+Rule3: http://watch.my-online-store.com/ and .../movies .../tv
+Path /
+Path /movies
+Path /tc
+
+Rule 4: all other like eat. listen. drink.
+Path / - 404!
+
+Ingress like this:
+1 rule: www.my-online-store.com
+2 paths: /wear /watch
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-wear-watch
+spec:
+  rules:
+  - http:
+      paths: 
+	  - path: /wear
+	    backend:
+		  serviceName: wear-service
+		  servicePort: 80
+	  - path: /watch
+	    backend:
+		  serviceName: watch-service
+		  servicePort: 80
+		  
+kubectl describe ingress ingress-wear-watch
+Default backend: default-http-backend:80 (none) - this is where user doesn't match rules
+Remember to deploy such service - with 404 or something.
+
+We didn't specify a host field - treated like a star/accept all the incoming traffic without matching any hostnames.
+
+Can also configure by domain names or host names:
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-wear-watch
+spec:
+  rules:
+  - host: wear.my-online-store.com
+    http:
+	  paths:
+	  - backend:
+	    serviceName: wear-service
+		servicePort: 80
+  - host: watch.my-online-store.com
+    http:
+	  paths:
+	  - backend:
+	    serviceName: watch-service
+		servicePort: 80
+		
+Changes from 1.20+:
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-wear-watch
+spec:
+  rules:
+  - http:
+    paths:
+	- path: /wear
+	  pathType: Prefix
+	  backend:
+	    service:
+		  name: wear-service
+		  port:
+		    number: 80
+	- path: /watch
+	  pathType: Prefix
+	  backend:
+	    service:
+		  name: watch-service
+		  port:
+		    number: 80
+
+kubectl create ingress <ingress-name> --rule="host/path=service:port"
+
+Example - kubectl create ingress ingress-test --rule="wear.my-online-store.com/wear*=wear-service:80"
+
+kubectl create configmap nginx-configuration --namespace ingress-space
+kubectl create serviceaccount ingress-serviceaccount --namespace ingress-space
+kubectl expose -n ingress-space deployment ingress-controller --type=NodePort --port=80 --name=ingress --dry-run=client -o yaml > ingress.yaml
+then manually add namespace and nodeport
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress
+  namespace: ingress-space
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    nodePort: 30080
+    name: http
+  - port: 443
+    targetPort: 443
+    protocol: TCP
+    name: https
+  selector:
+    name: nginx-ingress
+	
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-wear-watch
+  namespace: app-space
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /wear
+        pathType: Prefix
+        backend:
+          service:
+           name: wear-service
+           port: 
+            number: 8080
+      - path: /watch
+        pathType: Prefix
+        backend:
+          service:
+           name: video-service
+           port:
+            number: 8080
+
+cat /etc/systemd/system/kube-apiserver.service
+--etcd-servers=https://x.x.x.x:2379,https://y.y.y.y:2379
+
+kubeadm - steps:
+1. Have multiple VMs/machines
+2. Designate master node, rest is workers
+3. Install container runtime on all nodes
+4. Install kubeadm on all nodes			
+5. Init master server (first net requiremets - the pod network).
+6. Join workers to master node.
+
+TROUBLESHOOTING
+
+App:
+1. Check if web server is accessible - curl http://web-service-ip:node-port
+2. Check service. Has it discovered web endpoints for the web pod? - kubectl describe service web-sercice. Compare selectors serive - pod.
+3. Check if pod is running. - kubectl get pod, kubectl describe pod web (events), kubectl logs web (watch with -f maybe because restart or --previous)
+4. Check status of db service
+5. Check db pod
+
+Control Plane:
+1. kubectl get nodes
+2. kubectl get po
+3.
+Kubeadm:
+kubectl get po -n kube-system
+Manual:
+service kube-apiserver status
+kube-controller-manager kube-scheduler
+on worker: kubelet kube-proxy
+4. kubectl logs kube-apiserver-master -n kube-system (or if service sudo journalctl -u kube-apiserver)
+/etc/kubernetes/manifests
+
+Worker node:
+1. kubectl get nodes / kubectl describe node
+top, df -h
+service kubelet status
+sudo journalctl -u kubelet
+check kubelet certs
+openssl x509 -in /var/lib/kubelet/worker-1.crt -text
+/var/lib/kubelet/config.yaml
+/etc/kubernetes/kubelet.conf
+
+JSONPath
+
+kubectl get po -o json
+kubectl get po -o=jsonpath='{.items[0].spec.container[0].image}'
+
+prettify:
+kubectl get nodes -o=jsonpath='{.items[*].metadata.name} {"\n"} {.items[*].status.capacity.cpu}'
+{"\t"}
+
+Loops - range
+'{range .items[*]} {.metadata.name} {"\t"} {.status.capacity.cpu} {"\n"}'
+
+kubectl get nodes -o=custom-columns=<COLUMN_NAME>:<JSON_PATH>
+kubectl get nodes -o=custom-columns=NODE:.metadata.name, CPU:.status.capacity.cpu (exclude .items)
+
+Sorting (sort by option)
+kubectl get nodes --sort-by=.metadata.name
+
+kubectl config view --kubeconfig=/root/my-kube-config
+
+kubectl get pv --sort-by=.spec.capacity.storage -o=custom-columns=NAME:.metadata.name,CAPACITY:.spec.capacity.storage > /opt/outputs/pv-and-capacity-sorted.txt
+
+kubectl config view --kubeconfig=my-kube-config -o jsonpath="{.contexts[?(@.context.user=='aws-user')].name}" > /opt/outputs/aws-context-name
+	
+Pod
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    name: nginx
+  annotations:
+    buildversion: 1.34
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+	ports:
+	  - containerPort: 8080
+	command: ["sleep"]
+	args: ["10"]
+	env:
+	  - name: APP_COLOR
+	    value: pink
+    OR
+	  - name: APP_COLOR
+	    valueFrom:
+		  configMapKeyRef:
+		    name: app-configmap
+    OR
+	  - name: APP_COLOR
+	    valueFrom:
+		  secretKeyRef:
+   OR
+    envFrom:
+	- configMapRef:
+	  name: app-configmap
+  nodeName: node02 (only at creation time)
+  tolerations:
+  - key:"app"
+    operator: "Equal"
+	value: "blue"
+	effect: "NoSchedule"
+  nodeSelector:
+    size: Large (label of the node)
+  affinity: (with the same effect as node selector)
+    nodeAffinity:
+	  requiredDuringSchedulingIgnoredDuringExecution:
+	    nodeSelectorTerms:
+	    - matchExpressions:
+	      - key: size
+		    operator: In (NotIn, Exists (without value - just if has any size label) )
+		    values:
+		    - Large
+  resources:
+    requests:
+	  memory: "1Gi" (1024, 1G=1000 also works)
+	  cpu: 1 (1000m, equal to 1 vCPU/1 hyperthread)
+    limits:
+	  memory: "2Gi"
+	  cpu: 2
+	  
+ReplicaSet
+
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: replicaset-1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+	  tier: frontend
+  template:
+    metadata:
+	  labels:
+	    tier: frontend
+	spec:
+	  containers:
+	  - name: nginx
+	    image: nginx
+
+Deployment
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+	  name: busybox-pod
+  template:
+    metadata:
+	  labels:
+	    name: busybox-pod
+	spec:
+	  containers:
+	  - name: busybox-container
+	    image: busybox
+		command:
+		- sh
+		- "-c"
+		- echo Hello Kubernetes! && sleep 3600
+    strategy:
+	  rollingUpdate:
+	    maxSurge: 25%
+		maxUnavailable: 25%
+	  type: RollingUpdate
+		
+Service
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-service
+spec:
+  type: NodePort
+  ports:
+    - targetPort: 8080
+      port: 8080
+      nodePort: 30080
+  selector:
+    name: simple-webapp
+
+Binding
+
+apiVersion: v1
+kind: Binding
+metadata:
+  name: nginx
+target:
+  apiVersion: v1
+  kind: Node
+  name: node02
+
+Convert to JSON, send post request
+
+LimitRange
+
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: mem-limit-range
+spec:
+  limits:
+  - default:
+      memory: 512Mi
+    defaultRequest:
+      memory: 256Mi
+    type: Container
+
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: cpu-limit-range
+spec:
+  limits:
+  - default:
+      cpu: 1
+    defaultRequest:
+      cpu: 0.5
+    type: Container
+	
+DaemonSet (one copy of pod on each node, if node added, replica added) kube-proxy, weave-net, logging&monitoring
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: monitoring-daemon
+spec:
+  selector:
+    matchLabels:
+	  app: monitoring-agent
+  template:
+    metadata:
+	  labels:
+	    app: monitoring-agent
+    spec:
+	  containers:
+	  - name: monitoring-agent
+	    image: monitoring-agent
+		
+Scheduler
+
+apiVersion:v1
+kind: Pod
+metadata:
+  name: my-custom-scheduler
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-scheduler
+	- --address=127.0.0.1
+	- --kubeconfig=/etc/kubernetes/scheduler.conf
+	- --leader-elect=true (+ true HA/false nonHA)
+	- --scheduler-name=my-custom-scheduler (+)
+	- --lock-object-name=my-custom-scheduler (+ HA)
+	
+	image: k8s.gcr.io/kube-scheduler-amd64:1.11.3
+	name: kube-scheduler
+	
+TO A POD DEFINITION ADD:
+
+spec:
+  containers:
+    bbbbb
+  schedulerName: my-custom-scheduler
+  
+ConfigMap
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  APP_COLOR:blue
+  APP_MODE: prod
+  
+Secret
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+data:
+  DB_Host: bXlzcWw (from echo -n 'mysql' | base64)
+  DB_User: cm9vdA==
+  DB_Password: cGFzd3Jk
+  
+initContainer
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+  labels:
+    app: myapp
+spec:
+  containers:
+  - name: myapp-container
+    image: busybox:1.28
+    command: ['sh', '-c', 'echo The app is running! && sleep 3600']
+  initContainers:
+  - name: init-myservice
+    image: busybox
+    command: ['sh', '-c', 'git clone <some-repository-that-will-be-used-by-application> ; done;']
+	
+When a POD is first created the initContainer is run, and the process in the initContainer must run to a completion before the real container hosting the application starts.
+
+
+kubectl run nginx-resolver --image=nginx
+kubectl expose pod nginx-resolver --name=nginx-resolver-service --port=80 --target-port=80 --type=ClusterIP
+
+kubectl run test-nslookup --image=busybox:1.28 --rm -it --restart=Never -- nslookup nginx-resolver-service
+kubectl run test-nslookup --image=busybox:1.28 --rm -it --restart=Never -- nslookup nginx-resolver-service > /root/CKA/nginx.svc
+
+kubectl get pod nginx-resolver -o wide
+kubectl run test-nslookup --image=busybox:1.28 --rm -it --restart=Never -- nslookup <P-O-D-I-P.default.pod> > /root/CKA/nginx.pod
+
+----
+Solution manifest file to create a CSR as follows:
+
+---
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: john-developer
+spec:
+  signerName: kubernetes.io/kube-apiserver-client
+  request: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlJQ1ZEQ0NBVHdDQVFBd0R6RU5NQXNHQTFVRUF3d0VhbTlvYmpDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRApnZ0VQQURDQ0FRb0NnZ0VCQUt2Um1tQ0h2ZjBrTHNldlF3aWVKSzcrVVdRck04ZGtkdzkyYUJTdG1uUVNhMGFPCjV3c3cwbVZyNkNjcEJFRmVreHk5NUVydkgyTHhqQTNiSHVsTVVub2ZkUU9rbjYra1NNY2o3TzdWYlBld2k2OEIKa3JoM2prRFNuZGFvV1NPWXBKOFg1WUZ5c2ZvNUpxby82YU92czFGcEc3bm5SMG1JYWpySTlNVVFEdTVncGw4bgpjakY0TG4vQ3NEb3o3QXNadEgwcVpwc0dXYVpURTBKOWNrQmswZWhiV2tMeDJUK3pEYzlmaDVIMjZsSE4zbHM4CktiSlRuSnY3WDFsNndCeTN5WUFUSXRNclpUR28wZ2c1QS9uREZ4SXdHcXNlMTdLZDRaa1k3RDJIZ3R4UytkMEMKMTNBeHNVdzQyWVZ6ZzhkYXJzVGRMZzcxQ2NaanRxdS9YSmlyQmxVQ0F3RUFBYUFBTUEwR0NTcUdTSWIzRFFFQgpDd1VBQTRJQkFRQ1VKTnNMelBKczB2czlGTTVpUzJ0akMyaVYvdXptcmwxTGNUTStsbXpSODNsS09uL0NoMTZlClNLNHplRlFtbGF0c0hCOGZBU2ZhQnRaOUJ2UnVlMUZnbHk1b2VuTk5LaW9FMnc3TUx1a0oyODBWRWFxUjN2SSsKNzRiNnduNkhYclJsYVhaM25VMTFQVTlsT3RBSGxQeDNYVWpCVk5QaGhlUlBmR3p3TTRselZuQW5mNm96bEtxSgpvT3RORStlZ2FYWDdvc3BvZmdWZWVqc25Yd0RjZ05pSFFTbDgzSkljUCtjOVBHMDJtNyt0NmpJU3VoRllTVjZtCmlqblNucHBKZWhFUGxPMkFNcmJzU0VpaFB1N294Wm9iZDFtdWF4bWtVa0NoSzZLeGV0RjVEdWhRMi80NEMvSDIKOWk1bnpMMlRST3RndGRJZjAveUF5N05COHlOY3FPR0QKLS0tLS1FTkQgQ0VSVElGSUNBVEUgUkVRVUVTVC0tLS0tCg==
+  usages:
+  - digital signature
+  - key encipherment
+  - client auth
+To approve this certificate, run: kubectl certificate approve john-developer
+
+Next, create a role developer and rolebinding developer-role-binding, run the command:
+
+$ kubectl create role developer --resource=pods --verb=create,list,get,update,delete --namespace=development
+
+$ kubectl create rolebinding developer-role-binding --role=developer --user=john --namespace=development
+To verify the permission from kubectl utility tool:
+
+$ kubectl auth can-i update pods --as=john --namespace=development
+
+-----
+---
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: akshay
+spec:
+  groups:
+  - system:authenticated
+  request: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlJQ1ZqQ0NBVDRDQVFBd0VURVBNQTBHQTFVRUF3d0dZV3R6YUdGNU1JSUJJakFOQmdrcWhraUc5dzBCQVFFRgpBQU9DQVE4QU1JSUJDZ0tDQVFFQXY4azZTTE9HVzcrV3JwUUhITnI2TGFROTJhVmQ1blNLajR6UEhsNUlJYVdlCmJ4RU9JYkNmRkhKKzlIOE1RaS9hbCswcEkwR2xpYnlmTXozL2lGSWF3eGVXNFA3bDJjK1g0L0lqOXZQVC9jU3UKMDAya2ZvV0xUUkpQbWtKaVVuQTRpSGxZNDdmYkpQZDhIRGFuWHM3bnFoenVvTnZLbWhwL2twZUVvaHd5MFRVMAo5bzdvcjJWb1hWZTVyUnNoMms4dzV2TlVPL3BBdEk4VkRydUhCYzRxaHM3MDI1ZTZTUXFDeHUyOHNhTDh1blJQCkR6V2ZsNVpLcTVpdlJNeFQrcUo0UGpBL2pHV2d6QVliL1hDQXRrRVJyNlMwak9XaEw1Q0ErVU1BQmd5a1c5emQKTmlXbnJZUEdqVWh1WjZBeWJ1VzMxMjRqdlFvbndRRUprNEdoayt2SU53SURBUUFCb0FBd0RRWUpLb1pJaHZjTgpBUUVMQlFBRGdnRUJBQi94dDZ2d2EweWZHZFpKZ1k2ZDRUZEFtN2ZiTHRqUE15OHByTi9WZEdxN25oVDNUUE5zCjEwRFFaVGN6T21hTjVTZmpTaVAvaDRZQzQ0QjhFMll5Szg4Z2lDaUVEWDNlaDFYZnB3bnlJMVBDVE1mYys3cWUKMkJZTGJWSitRY040MDU4YituK24wMy9oVkN4L1VRRFhvc2w4Z2hOaHhGck9zRUtuVExiWHRsK29jQ0RtN3I3UwpUYTFkbWtFWCtWUnFJYXFGSDd1dDJveHgxcHdCdnJEeGUvV2cybXNqdHJZUXJ3eDJmQnErQ2Z1dm1sVS9rME4rCml3MEFjbVJsMy9veTdqR3ptMXdqdTJvNG4zSDNKQ25SbE41SnIyQkZTcFVQU3dCL1lUZ1ZobHVMNmwwRERxS3MKNTdYcEYxcjZWdmJmbTRldkhDNnJCSnNiZmI2ZU1KejZPMUU9Ci0tLS0tRU5EIENFUlRJRklDQVRFIFJFUVVFU1QtLS0tLQo=
+  signerName: kubernetes.io/kube-apiserver-client
+  usages:
+  - client auth
+  
+KubeConfig File
+
+apiVersion: v1
+kind: Config
+current-context: dev-user@google
+clusters:
+- name: my-kube-playground
+  cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+	(or)
+	certificate-authority-data: (base64 encoded cert)
+	server: https://my-kube-playground:6443
+contexts:
+- name: my-kube-admin@my-kube-playground
+  context:
+    cluster: my-kube-playground
+	user: my-kube-admin
+	namespace: finance
+users:
+- name: my-kube-admin
+  user:
+    client-certificate: /etc/kubernetes/pki/users/admin.crt
+	client-key: /etc/kubernetes/pki/users/admin.key
+
+developer-role.yaml
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list", "get", "create", "update", "delete"]
+- apiGroups: [""]
+  resources: ["ConfigMap"]
+  verbs: ["create"]
+  
+devuser-developer-binding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: devuser-developer-binding
+subjects:
+- kind: User
+  name: dev-user
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: developer
+  apiGroup: rbac.authorization.k8s.io
+  
+cluster-admin-role.yaml
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-administrator
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["list", "get", "create", "delete"]
+  
+cluster-admin-role-binding.yaml
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-admin-role-binding
+subjects:
+- kind: User
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-administrator
+  apiGroup: rbac.authorization.k8s.io
+  
+  ---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: storage-admin
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "watch", "list", "create", "delete"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "watch", "list", "create", "delete"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: michelle-storage-admin
+subjects:
+- kind: User
+  name: michelle
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: storage-admin
+  apiGroup: rbac.authorization.k8s.io
+  
+Network Policy
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+spec:
+  podSelector:
+    matchLabels:
+	  role: db
+  policyTypes:
+  - Ingress
+  - Egress - if added, isolate egress (nothing at all)
+  ingress:
+  - from:
+    - podSelector:
+	    matchLabels:
+		  name: api-pod
+    ports:
+	- protocol: TCP
+	  port: 3306
+	  
+Volumes
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: random-number-generator
+spec:
+  containers:
+  - image: alpine
+    name: alpine
+	command: ["/bin/sh", "-c"]
+	args: ["shuf -i 0-100 -n 1 >> /opt/number.out;"]
+	volumeMounts:
+	- mountPath: /opt
+	  name: data-volume
+  volumes:
+  - name: data-volume
+    hostPath:
+	  path: /data
+	  type: Directory
+	  
+  volumes:
+  - name: data-volume
+    awsElasticBlockStore
+	  volumeID: <volume-id>
+	  fsType: ext4
+	  
+PersistentVolume
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  pv-vol1
+spec:
+  accessModes:
+    - ReadWriteOnce (ReadOnlyMany, ReadWriteOnce, ReadWriteMany)
+  capacity:
+    storage: 1Gi
+  hostPath:
+    path: /tmp/data (not used in prod env)
+  OR
+  awsElasticBlockStore:
+    volumeID: <volume-id>
+	fsType: ext4
+	
+PersistentVolumeClaim
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myclaim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+	  storage: 500Mi
+	  
+Then in pod:
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod
+spec:
+  containers:
+    - name: myfrontend
+      image: nginx
+	  volumeMounts:
+	  - mountPath: "/var/www/html"
+	    name: mypd
+  volumes:
+    - name: mypd
+	  persistentVolumeClaim:
+	    claimName: myclaim
+		
+^ Same in ReplicaSets/Deployments
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-log
+spec:
+  persistentVolumeReclaimPolicy: Retain
+  accessModes:
+    - ReadWriteMany
+  capacity:
+    storage: 100Mi
+  hostPath:
+    path: /pv/log
+	
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: claim-log-1
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Mi
+
+StorageClass
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: google-storage
+provisioner: kubernetes.io/gce-pd
+
+PVC for StorageClass:
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myclaim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: google-storage
+  resources:
+    requests:
+	  storage: 500Mi
+	  
+Larger version of storage class (not needed)
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: google-storage
+provisioner: kubernetes.io/gce-pd
+parameters:
+  type: pd-standard (pd-ssd)
+  replication-type: none (regional-pd)
+  
+Example - create silver with std, gold with ssd, platinum ssd replicated
+
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: delayed-volume-sc
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+
+Ingress:
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: test-ingress
+  namespace: critical-space
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /pay
+        pathType: Prefix
+        backend:
+          service:
+           name: pay-service
+           port:
+            number: 8282
+			
+			
+MOCK 3:
+
+Pods authenticate to the API Server using ServiceAccounts. If the serviceAccount name is not specified, the default service account for the namespace is used during a pod creation.
+Reference: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+
+Now, create a service account pvviewer:
+
+kubectl create serviceaccount pvviewer
+To create a clusterrole:
+
+kubectl create clusterrole pvviewer-role --resource=persistentvolumes --verb=list
+To create a clusterrolebinding:
+
+kubectl create clusterrolebinding pvviewer-role-binding --clusterrole=pvviewer-role --serviceaccount=default:pvviewer
+Solution manifest file to create a new pod called pvviewer as follows:
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: pvviewer
+  name: pvviewer
+spec:
+  containers:
+  - image: redis
+    name: pvviewer
+  # Add service account name
+  serviceAccountName: pvviewer
+
+-
+Explore the jsonpath loop.
+kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}' > /root/CKA/node_ips
+
+
+
+-
+Solution manifest file to create a multi-container pod multi-pod as follows:
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multi-pod
+spec:
+  containers:
+  - image: nginx
+    name: alpha
+    env:
+    - name: name
+      value: alpha
+  - image: busybox
+    name: beta
+    command: ["sleep", "4800"]
+    env:
+    - name: name
+      value: beta
+
+-
+Solution manifest file to create a network policy ingress-to-nptest as follows:
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-to-nptest
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      run: np-test-1
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - protocol: TCP
+      port: 80
+
