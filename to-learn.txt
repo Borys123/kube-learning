@@ -404,5 +404,3 @@ kubectl get nodes -o=custom-columns=<COLUMN_NAME>:<JSON_PATH>,<><>
 kubectl config view
 kubectl config view --kubeconfig=/....
 https://controlplane:6443
-
-8.
