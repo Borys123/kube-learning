@@ -455,9 +455,11 @@ vi /etc/kubernetes/manifests/etcd.yaml :
 	  path: /var/lib/from-backup
 
 
-4. Custom columns
+4. Custom columns, JSONPATH, sorting
 
 kubectl get nodes -o=custom-columns=<COLUMN_NAME>:<JSON_PATH>,<>:<>
+kubectl get persistentvolume --sort-by=.spec.capacity.storage
+
 
 5. View controlplane config
 
