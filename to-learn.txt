@@ -484,7 +484,52 @@ kubectl create rolebinding pod-reader-binding -n beebox-mobile --user=dev --role
 Need metrics-server to see resource usage. Wait a few minutes after installing.
 kubectl top pod -n beebox-mobile --sort-by=cpu --selector app=auth
 
+8. Secret and ConfigMap
 
+htpasswd -c .htpasswd user
+kubectl create secret generic nginx-htpasswd --from-file .htpasswd
 
+In Pod:
+spec:
+  containers:
+    volumeMounts:
+    - name: config-volume
+      mountPath: /etc/nginx
+    - name: htpasswd-volume
+      mountPath: /etc/nginx/conf
+volumes:
+- name: config-volume
+  configMap:
+    name: nginx-config
+- name: htpasswd-volume:
+  secret:
+    secretName: nginx-htpasswd
 
+9. Self-healing containers
 
+restartPolicy + livenessProbe
+
+spec:
+  restartPolicy: Never - change to Always (Always, OnFailure and Never)
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+10. command: ['sh', '-c', 'until nslookup shipping-svc; do echo waiting for shipping-svc; sleep 2; done']
+
+11. Configure a pod to run on a specific node
+
+kubectl label nodes k8s-worker2 external-auth-services=true
+Edit Pod:
+spec:
+  nodeSelector:
+    external-auth-services: "true"
+
+12. Static pods: in /etc/kubernetes/manifests
+
+13. "Starting kube-proxy" - probably no network plugin
+
+14.
