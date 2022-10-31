@@ -606,6 +606,17 @@ spec:
   policyTypes:
   - Ingress
   ingress:
-  - ports:
+  - ports: (NOTE THE - !!!!!)
     - protocol: TCP
       port: 80
+
+ports - another way
+
+ingress:
+  - from:
+    namespaceSelector:
+      asdfagkjash
+    ports:
+      - protocol: TCP
+        port: 80
+    
