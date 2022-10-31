@@ -446,6 +446,7 @@ ETCDCTL_API=3 etcdctl \
 --cacert=/etc/kubernetes/pki/etcd/ca.crt \
 --cert=/etc/kubernetes/pki/etcd/server.crt \
 --key=/etc/kubernetes/pki/etcd/server.key \
+--endpoints=https://etcd1:2379 \
 snapshot save /opt/etcd-backup.db
 
 Example restore command:
@@ -576,3 +577,35 @@ spec:
 17. ClusterRoleBinding in namespace:
 kubectl create clusterrolebinding somename -n web --clusterrole=rolename --serviceaccount=web:serviceAccountName
 
+18. remember kubernetes.io/no-provisioner - not in docs!!!
+
+19. remember podSelector: {} in networkpolicy !!!
+
+20. remember tail -f 
+
+21.
+securityContext:
+    runAsUser: 1000
+    runAsGroup: 3000
+    capabilities:
+        add: ["NET_ADMIN", "SYS_TIME"]
+
+In Pod OR Container!!!
+
+22.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-to-nptest
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      run: np-test-1
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - protocol: TCP
+      port: 80
