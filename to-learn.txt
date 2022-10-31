@@ -620,3 +620,6 @@ ingress:
       - protocol: TCP
         port: 80
     
+23. crictl ps and crictl logs, /var/log/pods, /var/log/containers
+
+24. PORTS: APISERVER - 6443, ETCD - 2379
