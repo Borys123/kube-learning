@@ -1,3 +1,5 @@
+kubectl config use-context cluster1
+
 1. Important commands for deployments:
 
 kubectl scale
@@ -532,4 +534,45 @@ spec:
 
 13. "Starting kube-proxy" - probably no network plugin
 
-14.
+14. Expose pods:
+  1. Look up labels
+  2. Look up containerPort
+Service:
+spec:
+  type: ClusterIP
+  selector:
+    app: user-db
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+
+15. Ingress
+  1. Create a service that maps to the deployment (ClusterIP) with port name
+  spec:
+    type: ClusterIP
+    selector:
+      app: web-auth
+    ports:
+      - name: http
+        protocol: TCP
+        port: 80
+        targetPort: 80
+  2. Create ingress
+  spec:
+    rules:
+    - http:
+      paths:
+      - path: /auth
+        pathType: Prefix
+        backend:
+          service:
+            name: web-auth-svc
+            port:
+              number: 80
+
+16. emptyDir: {}
+
+17. ClusterRoleBinding in namespace:
+kubectl create clusterrolebinding somename -n web --clusterrole=rolename --serviceaccount=web:serviceAccountName
+
