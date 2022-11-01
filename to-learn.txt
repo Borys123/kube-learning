@@ -623,3 +623,9 @@ ingress:
 23. crictl ps and crictl logs, /var/log/pods, /var/log/containers
 
 24. PORTS: APISERVER - 6443, ETCD - 2379
+
+25. kubectl create configmap --from-literal=key=value OR --from-file=
+
+26. Remember ingressclass!!! And host!!! And namespace!!!
+
+27. Can do clusterrole with rolebinding - works in one namespace. Also --serviceaccount/--user
