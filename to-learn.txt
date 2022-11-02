@@ -2,27 +2,28 @@ kubectl config use-context cluster1
 
 1. Important commands for deployments:
 
-kubectl scale
 kubectl rollout status (what's going on with rolling update)
-kubectl set image deployment/my-deployment nginx=nginx:1.19.0 --record
-  ( -- record - records rolling deployment, easy to roll back )
+
 kubectl rollout history deployment.v1.apps/my-deployment
+
 kubectl rollout undo deployment.v1.apps/my-deployment --to-revision=1
   ( without --to-revision - one back )
 
-2. Pod FQDN:
+kubectl set image deployment/my-deployment nginx=nginx:1.19.0 --record
+  ( -- record - records rolling deployment, easy to roll back )
 
-pod-ip-address.namespace-name.pod.cluster.local
+2. Pod and svc FQDN:
+
 192-168-10-100.default.pod.cluster.local
+name.default.svc.cluster.local
 
-3. Remember about three dashes!
 
-4. NetworkPolicy
+3. NetworkPolicy
 By default pods are completely open.
 Any network policy selects a pod - it becomes isolated.
 
 Components:
-podSelector - to which pods in namespace policy applies. Uses labels.
+podSelector - to which pods in namespace policy applies. Uses labels. podSelector: {} !!!
 
 spec:
   podSelector:
@@ -47,25 +48,11 @@ spec:
       - podSelector:
         matchLabels:
           app: db
-
----
-
-spec:
-  ingress:
-    - from:
       - namespaceSelector:
         matchLabels:
-          app: db
-
----
-
-spec:
-  ingress:
-    - from:
+          ns: ns1
       - ipBlock:
-        cidr: 172.17.20.0/12
-
-ports - one/more ports that will allow traffic
+          cidr: 172.17.20.0/12
 
 spec:
   ingress:
@@ -74,28 +61,10 @@ spec:
         - protocol: TCP
           port: 80
 
-Traffic has to match pod/ns/cidr AND port.
-
 4. NodeSelector/NodeName
 NodeSelector uses labels, NodeName - exact node.
 
-5. Services
 
-Endpoints - 1 endpoint for each pod.
-kubectl get endpoints svc-clusterip
-
-port: 80 - service listens on this port
-targetPort: 80 - service routes to this port on the pod
-nodePort: 30080 - port on the node traffic is routed to
-
-Services also get DNS names.
-FQDN:
-service-name.namespace-name.svc.cluster-domain.example (cluster.local most of the time)
-If same namespace, just use: service-name
-
-Create service in an imperative way:
-
-kubectl expose pod messaging --port=6379 --name messaging-service
 
 6. Ingress
 
@@ -587,6 +556,7 @@ kubectl create clusterrolebinding somename -n web --clusterrole=rolename --servi
 securityContext:
     runAsUser: 1000
     runAsGroup: 3000
+    fsGroup: 2000
     capabilities:
         add: ["NET_ADMIN", "SYS_TIME"]
 
@@ -629,3 +599,22 @@ ingress:
 26. Remember ingressclass!!! And host!!! And namespace!!!
 
 27. Can do clusterrole with rolebinding - works in one namespace. Also --serviceaccount/--user
+
+---------------------
+
+kubectl scale
+
+Remember ---
+
+5. Services
+
+Endpoints - 1 endpoint for each pod.
+kubectl get endpoints svc-clusterip
+
+port: 80 - service listens on this port
+targetPort: 80 - service routes to this port on the pod
+nodePort: 30080 - port on the node traffic is routed to
+
+Create service in an imperative way:
+
+kubectl expose pod messaging --port=6379 --name messaging-service
