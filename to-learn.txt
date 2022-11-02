@@ -601,6 +601,75 @@ ingress:
 27. Can do clusterrole with rolebinding - works in one namespace. Also --serviceaccount/--user
 
 ---------------------
+1.
+kubectl get-contexts -o name
+kubectl config current-context
+cat ~/.kube/config | grep current
+
+2.
+tolerations:                                 # add
+  - effect: NoSchedule                         # add
+    key: node-role.kubernetes.io/control-plane # add
+  nodeSelector:                                # add
+    node-role.kubernetes.io/control-plane: ""
+
+3.
+kubectl get pod -A --sort-by=.metadata.creationTimestamp
+kubectl get pod -A --sort-by=.metadata.uid
+
+4.
+      affinity:                                             # add
+        podAntiAffinity:                                    # add
+          requiredDuringSchedulingIgnoredDuringExecution:   # add
+          - labelSelector:                                  # add
+              matchExpressions:                             # add
+              - key: id                                     # add
+                operator: In                                # add
+                values:                                     # add
+                - very-important                            # add
+            topologyKey: kubernetes.io/hostname             # add
+Specify a topologyKey, which is a pre-populated Kubernetes label, you can find this by describing a node
+
+5.
+    env:                                                                          # add
+    - name: MY_NODE_NAME                                                          # add
+      valueFrom:                                                                  # add
+        fieldRef:                                                                 # add
+          fieldPath: spec.nodeName
+
+6.
+find /etc/cni/net.d/
+The suffix is the node hostname with a leading hyphen
+
+7.
+kubectl get events -A --sort-by=.metadata.creationTimestamp
+
+8.
+kubectl api-resources --namespaced -o name
+kubectl get role --no-headers
+
+9.
+/etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+
+10.
+kubectl create secret --from-literal=user=aa7f3 --from-literal=pass=faf3j3
+
+11.
+kubeadm token create --print-join-command
+kubeadm reset
+
+12. 
+openssl x509  -noout -text -in /etc/kubernetes/pki/apiserver.crt
+kubeadm certs renew apiserver
+
+13.
+/var/lib/kubelet/pki/kubelet-client-current.pem
+/var/lib/kubelet/pki/kubelet.crt (server cert)
+
+14.
+
+
+---------------------
 
 kubectl scale
 
