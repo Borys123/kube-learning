@@ -1,0 +1,25 @@
+1. Secure an Ingress:
+
+Ingress docs, scroll to TLS.
+Create a secret with our cert and key.
+in Ingress:
+
+spec:
+  tls:
+  - hosts:
+    - https-example.foo.com
+    secretName: testsecret-tls
+  - host: https-example.foo.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: service1
+            port:
+              number: 80
+
+k create secret tls secure-ingress --cert=cert.pem --key=key.pem
+
+2. 
