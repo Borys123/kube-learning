@@ -22,4 +22,28 @@ spec:
 
 k create secret tls secure-ingress --cert=cert.pem --key=key.pem
 
-2. 
+2. kube-bench
+
+kube-bench run --targets master
+kube-bench run --targets master --check 1.2.20
+
+
+3. sha512
+
+sha512sum filename > compare
+paste second line
+cat compare | uniq
+
+4. binaries
+tar xzf binary
+kubernetes/server/bin/kube-apivserver --version
+sha512sum kubernetes/server/bin/kube-apivserver
+crictl ps | grep api
+ps aux | grep kube-apivserver - see pid
+ls /proc/1843/root/ - root fs of the container
+find /proc/1843/root/ | grep kube-apivserver
+shasum it, append to compare filename
+
+whereis kubelet
+
+5. 
