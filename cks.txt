@@ -146,5 +146,125 @@ Anonymous enabled by default, but:
 - of auth mode other than Always allow
 - but ABAC and RBAC require explicit auth for anonymous 
 
+APIServer needs anonymous auth for liveness probes!
+
+12. Insecure access
+
+No longer possible since 1.20 (kube-apiserver --insecure-port 8080)
+
+13. Manual API Request
+
+k config view --raw = vim .kube/config
+
+Extract certificate-authority-data 
+echo ... | base64 -d -w 0 > ca
+Same with client-certificate-data
+echo ... | base64 -d -w 0 > crt 
+client-key-data
+echo ... | base64 -d -w 0 > key
+
+k config view 
+grab the server address : 6443
+
+curl https://10.154.0.2:5443 --cacert ca
+Works, authed as system:anonymous
+
+curl https://10.154.0.2:5443 --cacert ca --cert crt --key=key
+Authed as the administrator
+
+14. External APIServer access
+
+k edit svc kubernetes
+edit as nodeport 
+
+Remember need open firewall
+
+k config view --raw
+copy it to local machine conf file 
+change server to external ip 
+Cert is not valid for this IP.
+openssl x509 -in /etc/kubernetes/pki/apiserver.crt
+create a hosts entry in hosts file for the extrenal ip address as kubernetes 
+in config file change to kubernetes too
+Works!
+
+15. NodeRestriction AdmissionController
+
+kube-apiserver --enable-admission-plugins=NodeRestriction
+
+Limits the Node labels a kubelet can modify
+Can only modify certain labels (its only node labels, only labels of pods running on the same node)
+Secure workload isolation via labels
+No one can pretend to be a "secure" node and schedule "secure" pods
+
+Verify it works:
+vi /etc/kubernetes/manifests/kube-apiserver.yaml
+--enable-admission-plugins=NodeRestriction (should be by default with kubeadm)
+On worker node:
+k config view
+vi /etc/kubernetes/kubelet.conf - config for kubelet-apiserver communication
+export KUBECONFIG=/etc/kubernetes/kubelet.conf - now its our kubectl config 
+k get ns - no permissions (user system:node:nodename)
+k get node - works 
+k label node cks-master cks/test=yes - forbidden 
+k label node cks-worker cks/test=yes - works 
+Restricted labels we can't even set for ourselves
+k label node cks-worker node-restriction.kubernetes.io/test=yes - not allowed to
+
+16. Wrap up of auth
+
+Outside -> API
+Pod -> API
+Node -> API
+
+Anonymous access
+Insecure access
+Certificates
+
+17. Secrets
+
+ETCDCTL_API=3 etcdctl ...certs... get /registry/secrets/default/secret2
+
+ETCD ENCRYPTION
+
+Create an EncryptionConfiguration
+
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+    - secrets
+    providers:
+    - identity: {} kind of deafult provider, nothing is encrypted - plain text
+    - aesgcm: encryption method 
+        keys:
+      - name: key1
+        secret: adsfhljksadgh==
+      - name: key2
+        secret: adfhljkhdsf==
+    - aescbc:
+        keys:
+        - name: key1
+          secret: adfhlkjh==
+        - name: key2
+          secret: adksjfhd==
+
+pass it as an argument to the APIServer
+--encryption-provider-config - path to file ^
+
+Encryption config (provider section) works in order!
+First one is used on new resource save.
+
+Might do resoruces: - secrets, first aesgcm, later identity as fallback
+
+Need a provider to read! That's why leave identity: {} !!!
+
+Encrypt all after change:
+kubectl get secrets --all-namespaces -o json | kubectl replace -f -
+
+Decrypt all: first set provider, second encrypted and recreate all like previously.
+
+
+
 
 
