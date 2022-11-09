@@ -46,6 +46,105 @@ shasum it, append to compare filename
 
 whereis kubelet
 
-5. cat jane.csr | base64 -w 0
+5. certs
 
-6. 
+COMMON NAME: 60099@internal.users
+
+openssl x509 -req -in 60099.csr -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key -CAcreateserial -out 60099.crt -days 500
+
+cat jane.csr | base64 -w 0
+
+k get csr jane -o yaml (copy certificate)
+echo certificate | base64 -d > jane.crt
+
+k config view
+users:
+-
+
+k config set-credentials jane --client-key=jane.key --client-certificate=jane.crt 
+or same with --embed-certs to include certs in kubeconfig
+
+k config set-context jane --user=jane --cluster=kubernetes
+
+k config get-contexts, k config use-context jane
+
+k auth can-i
+
+6. view and list
+
+list secrets - also will access data with -o yaml!
+
+7. sa
+
+k create sa accessor
+k create token accessor (pretty temporary)
+
+copy token and paste in into a jwt inspector (jwt.io)
+
+under pod spec:
+serviceAccountName: 
+
+token is mounted into a specific directory
+mount | grep ser
+will contain a token
+
+kubectl -n one exec -it pod-one -- mount | grep serviceaccount
+
+kubectl -n one exec -it pod-one -- cat /var/run/secrets/kubernetes.io/serviceaccount/token
+
+env | grep KUBER 
+
+curl https://10.96.0.1 -k (will identify as anonymous, error)
+
+curl https://10.96.0.1 -k -H "Authorization: Bearer $(cat token)" (still forbidden, but we see auth as default accessor)
+
+If we give RBAC to accessor, it will work.
+
+8. Disabling SA mounting in pod 
+
+Most often we don't need the pod to communicate with the API.
+
+In SA:
+automountServiceAccountToken: false
+
+In Pod:
+automountServiceAccountToken: false
+
+9. Limit SAs using RBAC to edit resources
+
+By default default sa doesn't really have permissions.
+But if someone modifies it, it goes bad.
+Better to use custom SAs.
+
+We have a pod with accessor SA.
+
+k auth can-i delete secret --as system:serviceaccount:default:accessor
+can't
+
+k create clusterrolebinding accessor --clusterrole edit --serviceaccount default:accessor
+
+k auth ...
+yes
+
+10. Restrict API access
+
+Authentication -> Authorization -> Admission Control
+
+Restrictions:
+- don't allow anonymous access
+- close insecure port 
+- don't expose ApiServer to the outside
+- restrict access from Nodes to API (NodeRestriction)
+- prevent unauthorized access (RBAC)
+- prevent pods from accessing API
+- Apiserver port behind firewall / allowed ip ranges (cloud provider)
+
+11. Anonymous access 
+
+kube-apiserver --anonymous-auth=true
+Anonymous enabled by default, but:
+- of auth mode other than Always allow
+- but ABAC and RBAC require explicit auth for anonymous 
+
+
+
