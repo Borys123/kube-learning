@@ -46,4 +46,6 @@ shasum it, append to compare filename
 
 whereis kubelet
 
-5. 
+5. cat jane.csr | base64 -w 0
+
+6. 
