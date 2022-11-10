@@ -264,6 +264,194 @@ kubectl get secrets --all-namespaces -o json | kubectl replace -f -
 
 Decrypt all: first set provider, second encrypted and recreate all like previously.
 
+18. Container sandboxes
+
+Sandboxes:
+- more resources needed
+- might be better for smaller containers
+- not good for syscall heavy workloads
+
+Contact kernel from the container:
+k exec pod -it -- bash
+uname -r 
+on master the same
+both these commands executed uname syscall, returned actual version
+
+strace uname -r - will show which syscalls the process makes
+
+Linux Kernel Dirty Cow 
+
+OCI
+kubelet --container-runtime {string}
+kubelet --container-runtime-endpoint {string}
+
+Kata containers
+
+Additional isolation with a lightweight VM and individual kernels
+
+- strong separation layer
+- runs every container in its own private VM (hypervisor based)
+- QEMU as default (needs virtualisation, like nested virtualisation in cloud - might not be asy to configur if already in a VM)
+
+gVisor
+
+user-space kernel for containers
+
+- adds another layer of separation
+- not hypervisor/VM based
+- simulates kernel syscalls with limited functionality
+- runs in userspace separated from Linux Kernel
+- runtime called runsc
+
+It's a kernel in golang that accepts syscalls and transforms them to the real kernel
+
+Create and use RuntimeClasses for runsc (gvisor)
+
+RuntimeClass is a k8s resource
+
+apiVersion: node.k8s.io/v1beta1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+
+in pod:
+
+spec:
+  runtimeClassName: gvisor
+
+scp gvisor-install.sh node01:/root
+
+ssh node01
+    sh gvisor-install.sh
+    service kubelet status
+
+19. OS Level Security Domains
+
+Security Contexts
+Define privilege and access control for Pod/Container
+- userID and groupID
+- run privileged/unprivileged
+- linux capabilities
+- ...
+
+spec:
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 3000
+    fsGroup: 2000
+    this is passed down to all containers
+  containers:
+    - name: asfafg
+    securityContext:
+      runAsUser: 0
+
+command id for checking
+
+Force container to run as non-root
+
+vi pod.yaml
+
+spec:
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 3000
+  containers:
+  -
+    securityContext:
+      runAsNonRoot: true - container is not allowed to run as root user
+
+Privileged containers
+- default containers run unprivileged
+- possible to run as pribileged to:
+  - access all devices
+  - run docker daemon inside container
+  - docker run --privileged
+- means that container user 0 = host user 0
+
+Enable privileged mode and test using sysctl (set kernel params at runtime if have privileges)
+
+in pod:
+enable security context again 1000,3000
+run as runAsNonRoot
+
+k exec -it pod -- sh
+sysctl kernel.hostname=attacker - won't work 
+
+in pod:
+delete old stuff
+containers:
+  securityContext:
+    privileged: true
+hostname will work
+
+PrivilegeEscalation
+
+AllowPrivilegeEscalation controls whether a process can gain more privileges than its parent process
+
+By default it's allowed.
+
+securityContext:
+  allowPrivilegeEscalation: false
+
+/proc/1/status - NoNewPrivs = 1
+
+Pod SecurityPolicies
+- Cluster-level resources
+- Control under which security conditions a pod has to run
+
+We create a policy and with this policy we kind of set a base all the pods in the cluster have to follow.
+Otherwise they won't be created. It's actually an AdmissionController, we enable it and all pods go through
+this on creation.
+
+PodSecurityPolicy controls what has been defined in the Pod (eg. SecurityContext)
+
+What can we set:
+privileged - running of privileged containers
+hostPID, hostIPC - usage of host namespaces
+hostNetwork, hostPorts - usage of host networking and ports 
+volumes- usage of volume types
+allowedHostPaths - usage of the host filesystem
+allowedFlexVolumes - allow specific FlexVolume drivers
+fsGroup - allocating an FSGroup that owns the pod's volumes
+readOnlyRootFilesystem - requiring the use of a read only root filesystem
+
+--enable-admission-plugins=PodSecurityPolicy
+
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: default
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  runAsUser:
+    rule: RunAsAny
+  fsGroup:
+    rule: RunAsAny
+  volumes:
+  - '*'
+
+Deployment now doesn't work, but k creat pod does.
+Because deployment creates the pod - deployment account doesn't see policy.
+
+Fix serviceaccount
+
+k create role psp-access --verb=use --resource=podsecuritypolicies 
+k create rolebinding psp-access --role=psp-access --serviceaccount=default:default
+
+Works now!
+
+20. mTLS
+
+- mutual authentication
+- two-way (bilateral) authentication 
+- two parties authenticating each other at the same time 
+
 
 
 
