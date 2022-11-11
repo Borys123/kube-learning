@@ -452,7 +452,213 @@ Works now!
 - two-way (bilateral) authentication 
 - two parties authenticating each other at the same time 
 
+To proxy, create an initContainer that needs NET_ADMIN capability
 
+k run app --image=bash --command -oyaml --dry-run=client > file.yml -- sh -c 'ping google.com'
 
+containers:
+- bash cont 
+- name: proxy
+  image: ubuntu
+  command:
+  - sh
+  - c
+  - 'apt-get update && apt-get install iptables -y && iptables -L && sleep 1d' (hacky)
+  securityContext:
+    capabilities:
+      add: ["NET_ADMIN"]
 
+21. OPA
 
+General-purpose policy engine that enables unified, context-aware policy enforcement across the entire stack
+- not k8s specific
+- rego language
+- works with json/yaml
+- in k8s uses AdmissionControllers
+- doesn't know concepts like pods/deployments
+
+OPA Gatekeeper provides K8s CRDs 
+
+Constraint template: (search for necesary labels)
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: K8sRequiredLabels
+
+Constraint: (pods must have labels X)
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: pod-must-have-gk 
+
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: ns-must-have-gk
+
+Install OPA Gatekeeper
+
+apiserver: --enable-admission-plugins=NodeRestriction (no others)
+k create -f https://blablabal
+
+In k8s docs: DYNAMIC ADMISSION CONTROL (admission webhooks)
+
+OPA Gatekeeper creates custom webhooks - every pod creation passes through this webhooks.
+There are 2 ways - validation admission webhook (only validate pod spec - apply/deny)
+Mutating admission webhook - mutates a pod.
+Gatekeeper works with a validating one.
+
+Deny All - Approve All Policy 
+
+k get crd (custom resource definitions)
+
+k get constrainttemplates 
+
+alwaysdeny_template.yml
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8salwaysdeny
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sAlwaysDeny 
+      validation:
+        #Schema for the 'parameters' field 
+        openAPIV3Schema:
+          properties:
+            message:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8salwaysdeny
+
+        violation[{"msg": msg}] {
+          1 > 0
+          msg := input.parameters.message
+        }
+
+all_pod_always_deny.yml 
+apiVersion:constraints.gatekeeper.sh/v1beta1
+kind: K8sAlwaysDeny
+metadata:
+  name: pod-always-deny 
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+  parameters:
+    message: "ACCESS DENIED!"
+
+k get K8sAlwaysDeny
+
+k run --image=nginx - ACCESS DENIED!
+
+k describe K8sAlwaysDeny pod-always-deny
+
+Change it to approve all:
+
+vi template
+change 1 > 0 to 1 > 2
+
+All NSes created need to have label "cks"
+
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredlabels 
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredLabels
+      validation:
+        openAPIV3Schema:
+          properties:
+            labels:
+              type: array
+              items: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredlabels
+
+        violation [{"msg": msg, "details": {"missing_labels": missing}}] {
+          provided := {label | input.review.object.metadata.labels[label]}
+          required := {label | label := input.parameters.labels[_]}
+          missing := required - provided
+          count(missing) > 0
+          msg := sprintf("you must provide labels: %v, [missing]")
+        }
+
+all_pods_must_have_cks_label.yml
+
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: pod-must-have-cks
+spec:
+  math:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+  parameters:
+    labels: ["cks"]
+
+all_ns_must_have_cks_label.yml
+
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: ns-must-have-cks
+spec:
+  math:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Namespace"]
+  parameters:
+    labels: ["cks"]
+
+Enforce deployment replica count
+
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8sminreplicacount 
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sMinReplicaCount 
+      validation:
+        openAPIV3Schema:
+          properties:
+            min:
+              type: integer
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sminreplicacount
+        
+        violation[{"msg": msg, "details": {"missing_replicas": missing_replicas}}]
+          provided := input.review.object.spec.replicas 
+          required := input.parameters.min
+          missing := required - provided 
+          missing > 0
+          msg := sprintf("you must provide %v more replicas", [missing_replicas])
+        }
+
+        apiVersion: constraints.gatekeeper.sh/v1beta1
+        kind: K8sMinReplicaCount
+        metadata:
+          name: deployment-must-have-min-replicas
+        spec:
+          match:
+            kinds:
+              - apiGroups: ["apps"]
+                kinds: ["Deployment"]
+          parameters:
+            min: 2
