@@ -662,3 +662,125 @@ spec:
                 kinds: ["Deployment"]
           parameters:
             min: 2
+
+22. Image security
+
+- use specific image versions
+
+- don't run as root
+(in alpine)
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup -h /home/appuser 
+COPY --from=0 /app /home/appuser/
+USER appuser
+CMD ["/home/appuser/app]
+
+- make filesystem RO 
+(can also do in security context k8s)
+RUN chmod a-w /etc
+
+- remove shell access
+RUN rm -rf /bin/* (in a good place though! After adduser)
+
+- remove caching issues (&& line with apt-gets)
+
+- no hardcoded secrets 
+CMD ["sh", "-c", "curl --head $URL$TOKEN"]
+podman run -e TOKEN=2e064aad-3a90-4cde-ad86-16fad1f8943e app
+
+rm -rf /usr/bin/bash in Killercoda
+
+23. SCS - static analysis of user workloads
+
+Example rules:
+- always define resource requests and limits 
+- pods should never use the default serviceAccount
+Generally: don't store sensitive data plain text in yaml/dockerfiles 
+
+Kubesec 
+
+docker run -i kubesec/kubesec:512c5e0 scan /dev/stdin < pod.yaml
+
+OPA Conftest 
+OPA - Open Policy Agent 
+Unit test framework for Kubernetes configurations 
+Uses Rego lanugage 
+
+Use conftest to check example k8s yaml 
+
+vim policy/deployment.rego 
+
+package main 
+deny[msg] {
+  input.kind = "Deployment"
+  not input.spec.template.spec.securityContext.runAsNonRoot = true
+  msg = "Containers must not run as root"
+}
+
+package main
+deny[msg] {
+  input.kind = "Deployment"
+  not input.spec.selector.matchLabels.app
+  msg = "Containers must provide app label for pod selectors"
+}
+
+docker run --rm -v $(pwd):/project instrumenta/conftest test deploy.yaml
+
+Conftest for dockerfiles 
+
+package main 
+
+denylist = [
+  "ubuntu"
+]
+
+deny[msg] {
+  input[i].Cmd == "from"
+  val := input[i].Value
+  contains(val[i], denylist[_])
+
+  msg = sprintf("unallowed image found %s, [val])
+}
+
+package commands 
+
+denylist = [
+  "apk",
+  "apt",
+  "pip",
+  "curl",
+  "wget",
+]
+
+deny[msg] {
+  input[i].Cmd == "run"
+  val := input[i].Value
+  contains(val[_], denylist[_])
+
+  msg = sprintf("unallowed comments found %s", [val])
+}
+
+24. Image scanning for known vulnerabilities
+
+cve.mitre.org
+nvd.nist.gov 
+
+Clair:
+- open source
+- static analysis of vulnerabilities in application containers
+- ingests vulnerability metadata from a configured set of sources
+- provides API
+
+Trivy:
+- open source
+- a simple and comprehensive vuln scanner for containers and others, compatible with CI 
+
+Using Trivy to check some public images and kube-apiserver image 
+
+docker run ghcr.io/aquasecurity/trivy:latest image nginx
+
+k -n applications get pod -oyaml | grep image
+
+or just trivy image imagename | grep CVE-...
+
+25. Secure supply chain
+
