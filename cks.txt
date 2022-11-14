@@ -784,3 +784,179 @@ or just trivy image imagename | grep CVE-...
 
 25. Secure supply chain
 
+docker login 
+
+In kubernetes:
+kubectl create secret docker-registry my-private-registry \
+--docker-server=my-private-registry-server \
+--docker-username=username \
+--docker-password=password \
+--docker-email=email 
+
+kubectl patch serviceaccount defaut -p '{"imagePullSecrets": [{"name": "my-private-registry"}]}'
+
+List all image registries used in the whole cluster 
+Use Image digest for kube-apiserver 
+
+k get pod -A -oyaml | grep "image:" | grep -v "f:"
+
+k8s.gcr.io and docker.io None = docker.io
+
+Tags can be overwritten.
+See imageID under conatainerStatuses
+There's the image digest (@sha256:adsfhjkghd)
+
+In yaml replace image with the digest 
+
+Whitelist docker.io and k8s.gcr.io with OPA
+
+Install gatekeeper 
+
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8strustedimages
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sTrustedImages 
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8strustedimages
+
+        violation [{"msg": msg}] {
+          image := input.review.object.spec.containers[_].image
+          not startswith(image, "docker.io/")
+          not startswith(image, "k8s.gcr.io/")
+          msg := "not trusted image!"
+        }
+    
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sTrustedImages
+metadata:
+  name: pod-trusted-images
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+
+k run nginx --image=nginx (not trusted image - always have to specify the registry now!)
+
+ImagePolicyWebhook
+
+Example ImagePolicyWebhook
+
+"apiVersion":"imagepolicy.k8s.io/v1alpha1",
+"kind":"ImageReview",
+"spec":{
+  "containers":[
+    {
+      "image":"myrepo:myimage:v1"
+    },
+    {
+      "image":"myrepo:myimage@sha256:asdldsjghl"
+    }
+  ],
+  "annotations":{
+    "mycluster.image-policy.k8s.io/ticket-1234":"break-glass"
+  "namespace":"mynamespace"
+  },
+}
+
+Investigate ImagePolicyWebhook and use it up to the point where it calls an external service 
+
+(external service doesn't exist in our case, let's pretend it's down)
+Best to remove OPA Gatekeeper now.
+
+vi /etc/kubernetes/manifests/kube-apiserver.yaml
+--enable-admission-plugins=NodeRestriction,ImagePolicyWebhook
+
+ApiServer will be mad now. ImagePolicyWebhook - no config specified
+
+Copy example from course repo to /etc/kubernetes/adminssion:
+admission_config.yaml
+certs 
+kubeconf 
+
+vi admission_config.yaml
+
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+  - name: ImagePolicyWebhook
+    configuration:
+      imagePolicy:
+        kubeConfigFile: /etc/kubernetes/admission/kubeconf
+        allowTTL: 50
+        denyTTL: 50
+        retryBackoff: 500
+        defaultAllow: false (all pod creation denied, even if ext service down)
+
+kubeconf:
+Clusters refers to the remote service 
+users refers to the API server's webhook configuration 
+
+vi kube-apiserver.yaml, add:
+--admission-control-config-file=/etc/kubernetes/admission/admission_config.yaml 
+It is on the machine, but not in the container. Configure volumes (hostpath).
+
+k run test --image=nginx - forbidden (post to url no such host - external service down)
+
+26. Behavioral Analytics at host and container level
+
+Applications - Firefox, Curl | user space
+Libraries - glibc, libxyz    |         
+Syscall Interface - getpid(), reboot() | kernel space
+Linux Kernel                           |
+Hardware
+
+Applications communicate with syscall interface usually through libraries, but can also directly.
+
+seccomp/apparmor - lay between userspace and syscall interface
+Filter syscalls etc 
+
+strace
+- intercepts and logs system calls made by a process
+- log and display signals received by a process
+- usually preinstalled
+- diagnostic, learning, debugging
+
+strace
+ -o filename
+ -v verbose
+ -f follow forks
+
+ -cw (count and summarise)
+ -p pid
+ -P path
+
+strace ls /
+execve - proper path was executed
+access - access file 
+openat - open a file 
+fstat - get file status
+close 
+
+strace -cw ls / - nice output, numbers and not verbose
+
+Strace and /proc on ETCD
+
+/proc
+- information and connection to processes and kernel
+- study it to learn how processes work
+- configuration and administrative tasks 
+- contains files taht don't exist, yet you can access these (created on access)
+- kind of communication interface with the Linux kernel
+
+strace Kubernetes etcd 
+1. List syscalls
+2. Find open files
+3. Read secret value 
+
+
+
+
+
