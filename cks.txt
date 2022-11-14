@@ -952,11 +952,118 @@ Strace and /proc on ETCD
 - kind of communication interface with the Linux kernel
 
 strace Kubernetes etcd 
+
 1. List syscalls
+
+crictl ps | grep etcd
+ps aux | grep etcd 
+
+strace -p 3502 (-f more, follow subprocesses/forks)
+
+strace -p 3502 -f -cw (wait 3 secs, ctrl + c)
+
 2. Find open files
+
+cd /proc/3502
+ls
+ls -lh exe
+cd fd
+ls -lh - all open files and open sockets
+
+tail 7 -f (was a database)
+SOme binary output 
+
 3. Read secret value 
 
+k create secret generic creadit-card --from-literal cc=11223344
 
+cat 7 | grep 11223344 - nothing, binary file 
+cat 7 | strings | grep 11223344 - found!
 
+Create Apache pod with a secret as environment variable
+Read that secret from host filesystem
 
+k run apache --image=httpd -oyaml --dry-run=client > pod.yaml
+env:
+- name: SECRET
+  value: "1231254"
 
+k exec apache -- env 
+SECRET=1231254
+
+ps aux | grep httpd (on worker node)
+crictl ps | grep apache
+pstree -p (output pid)
+containerd -> containerd-shim -> httpd -> httpd -> httpd{...}
+Copy PID of first httpd 
+
+cd /proc/28696
+cat environ - we have the secret 
+
+Falco and Installation
+
+Falco 
+- Cloud-Native runtime security (CNCF)
+- ACCESS
+  * deep kernel tracing built on the Linux kernel (overview about processes, investigate them, kernel activity, syscalls)
+- ASSERT
+  * describe security rules against a system (+default ones)
+  * detect unwanted behavior, maybe create some logs
+- ACTION 
+  * automated respond to a security violation
+
+Install Falco on worker node 
+Auditing with Falco in k8s docs 
+
+curl -s <repo>
+apt install -y falco 
+service falco start 
+
+cd /etc/falco/
+vi falco.yaml
+
+tail -f /var/log/syslog | grep falco
+
+Use Falco to find malicious processes
+
+k exec -it apache -- bash
+Notice A shell was spawned...
+
+echo "user" /etc/passwd 
+Error File below /etc opened for writing...
+
+Add some readiness probe to the container with apt-get update
+Error Package management process launched...
+
+Liveness probe fails - container restart 
+Readiness probe fails - no new requests redirected to the container
+
+Investigate Falco rules
+
+cd /etc/falco
+vi falco_rules.yaml
+/was spawned (search)
+
+vim k8s_audit_rules.yaml 
+/etc
+
+Rules and macros (macros can be called by conditions of rule sections)
+
+Change Falco rule to get custom output format
+
+Rule: "A shell was spawned in a container with an attached terminal"
+Output Format: TIME,USER-NAME,CONTAINER-NAME,CONTAINER-ID 
+Priority: WARNING
+
+You can service falco stop and use falco from the commandline
+
+cd /etc/falco/
+grep -r "A shell was ......" - falco_rules.yaml
+vi falco_rules.yaml
+
+Copy the rule and paste in falco_rules.local  - override existing rules
+
+Exchange notice with warning 
+For TIME: falco.org/docs -> supported fields for conditions and outputs
+output: >
+  (%evt.time,%user.name,%container.name,%container.id)
