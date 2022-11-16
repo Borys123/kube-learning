@@ -1230,3 +1230,132 @@ rules:
     resources: ["secrets"]
 - level: RequestResponse
 
+29. Kernel hardening
+
+Between apps/libraries and systall interface we implement another layer 
+
+AppArmor 
+
+We create profiles for apps, define what they can do and cannot do.
+Like for Firefox, or a k8s component like the kubelet.
+
+Put profiles in different modes 
+- unconfined - process can espace, nothing is enforced 
+- complain - process can escape, but will be logged 
+- enforce - processes cannot escape, only do what is allowed in the profile 
+
+Commands:
+- aa-status - show all profiles 
+- aa-genprof - generate a new profile 
+- aa-complain - put profile in complain mode 
+- aa-enforce - put profile in enforce mode 
+- aa-logprof - update the profile if app produced some more usage logs (syslog)
+
+Setup simple AppArmor profile for curl (on worker node)
+
+aa-status
+
+apt-get install apparmor-utils 
+
+aa-genprof curl
+
+AppArmor will look what the process needs and create the profile around it.
+Use the app, create the profile. If in the future app suddenly does something not normal, it will denied.
+
+Press F.
+
+curl killer.sh -v -- doesn't work 
+
+aa-status
+
+cd /etc/apparmor.d/
+vi usr.bin.curl 
+
+How to allow for curl to work?
+
+By running curl killer.sh we caused syslogs - they're now filled with apparmor entries.
+Now AppArmor can auto update the profile for us.
+
+aa-logprof
+Type A. Then S.
+
+AppArmor for Docker nginx
+
+vim /etc/apparmor.d/docker-nginx -> paste the profile from docs
+There is some info in Restrict a Container's access to resources with AppArmor 
+There's a crazy bash script which executes apparmor_parser
+
+apparmor_parser /etc/apparmor.d/docker-nginx 
+docker-nginx is loaded (also docker-default, which comes by default)
+
+docker run nginx 
+docker run --security-opt apparmor=docker-default nginx
+docker run --security-opt apparmor=docker-nginx nginx 
+We see some permission denies, but container's running 
+Run it with -d now.
+docker exec -it <<id>> sh 
+touch /root/test - cannot 
+touch /test - works 
+sh - denied
+
+AppArmor profile for Kubernetes 
+
+Requirements:
+- CRI needs support for AppArmor 
+- AppArmor needs to be installed on every node 
+- AppArmor profiles need to be available on every node 
+- AppArmor profiles are specified per container NOT POD 
+  * using annotations 
+
+We use same profile as before for nginx 
+
+Create a simple nginx pod 
+
+metadata:
+  annotations: #from AppArmor docs k8s 
+    container.apparmor.security.beta.kubernetes.io/secure: localhost/hello
+
+k -f pod.yaml create 
+status: blocked
+describe it - waiting, blocked, cannot enforce AppArmor
+
+Change it to docker-nginx and it works 
+NOT the filename, name specified inside the profile!
+
+Seccomp
+
+- "securing computing mode"
+- security facility in the Linux Kernel
+- restricts execution of syscalls
+
+Originally, seccomp only allowed:
+exit(), sigreturn(), read(), write() (only already open files)
+
+Seccomp in Docker nginx 
+
+There's a seccomp profile in course docs
+
+vi default.json -> paste the profile 
+
+docker run --security-opt seccomp=default.json nginx 
+
+Kubernetes seccomp 
+
+Need to put the profile in the right directory 
+In Kubelet docs, --seccomp-profile-root string 
+Default value /var/lib/kubelet/seccomp 
+mkdir it, then paste the file there 
+
+Create a pod with: (find stuff in k8s docs, search seccomp)
+
+spec:
+  securityContext: #for the whole POD!!!
+    seccompProfile:
+      type: Localhost
+      localhostProfile: default.json
+
+30. Reduce attack surface
+
+
+
+
