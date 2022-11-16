@@ -1356,6 +1356,93 @@ spec:
 
 30. Reduce attack surface
 
+APPLICATIONS
+- keep up to date 
+- update Linux kernel 
+- remove not needed packages 
 
+NETWORK 
+- network behind firewall 
+- check and close open ports 
 
+IAM 
+- run as user, not root 
+- restrict user permissions 
+
+Nodes that run K8S 
+- should only have 1 purpose: run k8s components 
+  * remove unnecessary services 
+- node recycling
+  * nodes should be ephemeral
+  * created from images 
+  * can be recycled any time (and fast if necessary)
+
+Linux Distros:
+- often include a number of services 
+- meant to help, but widen attack surface 
+
+netstat -plnt
+lsof -i :22 (for example, or look for open files)
+
+systemctl 
+
+ps aux 
+
+Disable Service Snapd via systemctl
+
+Snapd - from snappy, package manager service, default in Ubuntu 
+
+systemctl status snapd 
+systemctl stop snapd 
+
+systemctl list-units --type=service --state=running | grep snapd 
+
+systemctl disable snapd 
+
+Install and investigate services (vsftpd, samba)
+
+apt-get update
+apt-get install vsftpd samba
+
+systemctl status vsftpd
+systemctl status smbd
+systemctl start smbd
+
+ps aux | grep vsftpd
+We see pids, running as root 
+Same for smbd (a few processes here)
+
+netstat -plnt 
+Various things going on. We see smbd listening on 445. vsftpd on 21
+
+netstat -plnt | grep 445
+
+Disable application listening on port 
+
+Find and disable the app listening on port 21
+
+netstat -plnt | grep 21
+or
+lsof -i :21
+
+systemctl list-units --type service | grep ftp
+systemctl status vsftpd
+systemctl stop vsftpd
+systemctl disable vsftpd
+
+Investigate Linux users 
+
+whoami - I am root
+cat /etc/passwd
+ctrl + d
+sudo -i 
+
+ps aux | grep bash (kim, ubuntu, few for root)
+
+adduser test
+su test
+
+kill <PID>
+
+apt show kube-bench
 
