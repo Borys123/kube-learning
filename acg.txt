@@ -1,1 +1,9 @@
-ACG
+1. DOCS:
+
+kubernetes.io/docs 
+kubernetes.io/blog 
+
+github.com/aquasecurity/trivy
+falco.org/docs 
+gitlab.com/apparmor/apparmor/-/wikis/Documentation
+
