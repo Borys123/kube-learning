@@ -1080,3 +1080,153 @@ Manual changes using --command
 
 pod starts -> app container starts -> app container runs
 Command: chmod a-w -R / && nginx
+
+Startup probe
+
+app container runs
+^
+startup probe runs
+
+No liveness/readiness probes are executed until startupProbe succeeds
+
+We can hack startupProbe and use it to do changes.
+
+Startup probe: chmod a-w -R / 
+
+Enforce RO root fs using SecurityCOntexts and PodSecurityPolicies
+
+Move logic to init container which is attached to the volume and has R/W 
+Eg. generate cache with init, then only read for app container 
+
+Use startupProbe to remove executables touch and bash from the container 
+rm /bin/touch
+
+Ensure readOnlyRootFilesystem, add an emptydir volume 
+Ensure some directories are still writeable using emptyDir volume 
+docker run --read-omly --tmpfs /run my-container 
+(talks about bringing this to kubernetes)
+
+With RBAC it should be ensured only select people can even edit pod yaml spec
+
+28. Auditing
+
+We can tell Kubernetes API to log all API requests to an audit log.
+- did someone access an important secret while it was not protected?
+- when was the last time user X accessed cluster Y?
+- does my CRD work properly?
+
+API Request -> Kube API -> Audit Logs
+        << STAGES >>
+        RequestReceived
+        ResponseStarted
+        ResponseComplete
+        Panic
+
+We create an Audit Policy and set stages we want to log there.
+
+Each request can be recorded with an associated stage:
+- RequestReceived - stage for events generated as soon as the audit handler receives the request, before it's delegated down the handler chain
+- ResponseStarted - once the response headers are sent, but before the response body is sent. Only generated for long, running requests (eg. watch)
+- ResponseComplete - response body has been completed and no more bytes will be sent 
+- Panic - events generated when a panic occured
+
+API Requests are not only sent by us.
+What events should be recorded and what data should these contain?
+
+Audit Policy Rule LEVELS (before we had STAGES)
+- None - don't log events that match this rule 
+- Metadata - log request metadata (requesting user, timestamp, resource, verb, etc.) but not request or response body 
+- Request - log event metadata and request body but not response body. Doesn't apply for non-resource requests.
+- RequestResponse - log event metadata, request and response bodies. Doesn't apply for non-resource requests.
+
+Example:
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - "RequestReceived"
+rules:
+# log no "read" actions
+- level: None 
+  verbs: ["get", "watch", "list"]
+# log nothing regarding events 
+- level: None 
+  resources:
+  - group: "" #core 
+    resources: ["events"]
+# log nothing coming from some groups 
+- level: None
+  userGroups: ["system:nodes"]
+- level: RequestResponse 
+  resources:
+  - group: ""
+    resources: ["secrets"]
+# for everything else log 
+- level: Metadata 
+
+Checked from the top to bottom.
+
+Where do we store the data? Audit backends
+- Log (JSON files) with max size, rotation etc. In CKS it's this one
+- Webhook (external API)
+- Dynamic backend (AuditSink API)
+
+Then we aggregate them with ElasticSearch, FileBeat, Fluentd etc.
+
+So:
+First define stages (RequestReceived, ResponseStarted, ResponseComplete, Panic)
+Then Level (None, Metadata, Request, RequestResponse) - Next one contains previous ones? Probably?
+Can also further specify event content (Pods, Secrets, "get", "delete")
+
+Configure APIServer to store logs in JSON format 
+
+mkdir /etc/kubernetes/audit
+vim policy.yaml in audit
+
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+- level: Metadata # log everything on metadata level 
+
+vi kube-apiserver.yaml # search for auditing in kube docs 
+
+--audit-policy-file=/etc/kubernetes/audit/policy.yaml 
+--audit-log-path=/etc/kubernetes/audit/logs/audit.log 
+--audit-log-maxsize=500
+--audit-log-maxbackup=5
+
+volumes:
+- hostPath:
+    path: /etc/kubernetes/audit
+    type: DirectoryOrCreate
+  name: audit
+
+volumeMounts:
+- mountPath: /etc/kubernetes/audit
+  name: audit
+
+Create advanced audit policy - restrict logged data with an Audit Policy 
+
+- nothing from stage RequestReceived
+- nothing from "get", "watch", "list"
+- from secrets only metadata level 
+- everything else RequestResponse level 
+
+1. Change policy file 
+2. Disable audit logging in apiserver, wait till restart (or move yaml)
+3. Enable audit logging in apiserver, wait till restart 
+  a. If apiserver wont start, check /var/log/pods/kube-system_kuebe-apiserver* 
+4. Test your changes 
+
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - "RequestReceived"
+rules:
+- level: None
+  verbs: ["get", "list", "watch"]
+- level: Metadata
+  resources:
+  - group: ""
+    resources: ["secrets"]
+- level: RequestResponse
+
