@@ -143,3 +143,75 @@ RBAC, maybe network segmentation, firewalls.
 
 5. Verifying Kubernetes binaries
 
+kubectl version --short --client
+
+curl -LO "https://dl.k8s.io/v1.20.1/bin/linux/amd64/kubectl.sha256"
+
+echo "$(<kubectl.sha256) /usr/bin/kubectl" | sha256sum --check
+
+6. ServiceAccounts
+
+If a container is comproimsed, an attacker can use it to acces K8s API. Only give necessary permissions to SAs.
+
+Examine existing RoleBindings and ClusterRoleBindings to determine what permissions a SA has.
+
+Design your RBAC setup in such a way that service accounts don't have unnecessary permissions.
+
+You can bind multiple roles to an account. Keep roles separate, don't overload them with permissions.
+
+You can bind CRs with RBs.
+
+7. The Kubernetes API 
+
+Limit user account permissions.
+Limit network access to the KubeAPI.
+
+8. Kubernetes updates
+
+Keep K8s up to date.
+
+Appr 1 year / 3 minor versions of patch support.
+
+9. Host OS Security
+
+Containers use OS namespaces to isolathe themselves from other containers and the host.
+
+Host Namespaces | Container Namespaces - separation
+
+You can configure pods to use the Host Namespace. Never do it unnecessarily.
+spec:
+  hostIPC: true      |
+  hostNetwork: true  | all default to false
+  hostPID: true      |
+
+Privileged mode - allowes containers to access host-level resources and capabilities
+                  much like a non-container process running directly on the host.
+
+spec:
+  containers:
+    - securityContext:
+        privileged: true
+
+10. IAM Roles
+
+Containers may be able to access IAM credentials.
+Use principle of least privilege. 
+If K8s doesn't use IAM, block access to (for EC2, IP address 169.254.169.254)
+
+11. Network-Level Security 
+
+Limit access to the cluster network from outside of the cluster.
+
+By default, anyone who can access the cluster network, can communicate with all Pods and Svcs in the cluster.
+
+When possible, limit access to the cluster network from outside. 
+
+12. AppArmor
+
+Linux Security kernel module. Provides granular access control for programs running on Linux systems. Use AppArmor to control
+and limit what a program can do within the host OS.
+
+
+
+13.
+
