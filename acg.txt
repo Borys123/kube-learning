@@ -7,3 +7,139 @@ github.com/aquasecurity/trivy
 falco.org/docs 
 gitlab.com/apparmor/apparmor/-/wikis/Documentation
 
+1. NetworkPolicies
+
+deafault-deny-np.yaml
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: nptest
+spec:
+  podSelector: {}
+  policyTypes:
+- Ingress
+- Egress
+
+NetPols are additive - have a default deny, add rules allowing with others.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nginx-ingress 
+  namespace: nptest 
+spec:
+  podSelector:
+    matchLabels:
+      app: nginx 
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+      matchLabels:
+        project: test
+      podSelector:
+        matchLabels:
+          app: client
+    ports:
+    - protocol: TCP
+      port: 80
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nginx-ingress 
+  namespace: nptest 
+spec:
+  podSelector:
+    matchLabels:
+      app: client 
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+      matchLabels:
+        project: test
+      podSelector:
+        matchLabels:
+          app: nginx
+    ports:
+    - protocol: TCP
+      port: 80
+
+2. CIS Benchmark
+
+k create -f both kube-bench files (control and worker job)
+
+k log kube-bench-master > kube-bench-master.log
+k log kube-bench-worker > kube-bench-worker.log 
+
+/var/lib/kubelet/config.yaml 
+
+3. Ingress TLS
+
+user -> https -> ingress -> http -> service
+
+openssl req -nodes -new -x509 -keyout tls-ingress.key -out tls-ingress.crt -subj "/CN=ingress.test" 
+
+vi ingress-tls-secret.yaml
+apiVersion: v1
+kind: Secret 
+type: kubernetes.io/tls 
+metadata:
+  name: ingress-tls
+  namespace: ingresstest
+data:
+  tls.crt: |
+    <base64-encoded cert data from tls-ingress.crt>
+  tls.key: |
+    <base64-encoded key data from tls-ingress.key>
+
+tls-ingress.yaml
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tls-ingress
+  namespace: ingresstest
+spec:
+  tls:
+  - hosts:
+    - ingress.test 
+    secretName: ingress-tls
+  rules:
+  - host: ingress.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ingresstest-nginx-svc 
+            port:
+              number: 80
+
+4. Attack surfaces (ports, gui tools, opportunities)
+
+Securing Node Endpoints
+
+Be aware of what ports your K8s nodes are using. Use network segmentation/firewalls to keep them safe!
+
+6443 kube-apiserver
+2379-2380 etcd
+10250 kubelet API 
+10251 kube-scheduler
+10252 kube-controller-manager
+
+Worker node listening ports:
+10250 kubelet API
+30000-32767 NodePort Services
+
+Secure the GUI dashboard!
+RBAC, maybe network segmentation, firewalls.
+
+5. Verifying Kubernetes binaries
+
