@@ -1,4 +1,4 @@
-1. DOCS:
+DOCS:
 
 kubernetes.io/docs 
 kubernetes.io/blog 
@@ -648,23 +648,95 @@ A Falco rule defines a set of conditions that will trigger an alert. Defined in 
 - rule: spawned_process_in_test_container
   desc: A process was spawned in the test container.
   condition: container.name = "falco-test" and evt.type = execve
-  output: "%evt.time,%user.uid,%proc.name"
+  output: "%evt.time,%user.uid,%proc.name" # falco --list helps here
   priority: WARNING
 
+Falco needs to be installed on the worker nodes.
+GPG, repo etc
+apt install falco
 
+Now on controlplane
+Create a test pod falco-test that cats /etc/shadow
+
+vi falco-rules.yaml 
+- rule: spawned_process_in_test_container
+  desc: A process was spawne in the test container.
+  condition: container.name = "falco-test" and evt.type = execve
+  output: "%evt.time,%user.uid,%proc.name,%container.id,%container.name"
+  priority: WARNING
+
+sudo falco -r falco-rules.yml -M 45
 
 26. Immutable Containers
 
+Container immutability - (stateless) do not change during lifetime. Instead, replaced with new containers.
+Often means that the container fs remains static, and the container doesn't depend on 
+non-immutable host resources that require privileged access.
 
+Immutability has security benefits:
+- attacker can't donwload malicious software or tools, or alter the container's runtime code
+
+Best practices:
+- avoid elevated privileges (don't do securityContext.privileged: true)
+- host namespaces (like hostNetwork: true)
+- securityContext.allowPrivilegeEscalation: true - allows a container to gain more privileges than the parent process
+- securityContext.runAsUser: root/0 
+
+Immutable containers cannot change code at runtime. Don't allow to write to its own fs.
+securityContext:
+  readOnlyRootFilesystem: true
+Use emptyDirs.
 
 27. Audit Logging
 
+Audit Logs - a chronological record of actions performed through the Kube API.
+Useful for seeing what's going on in the cluster in real time, or for examining what happened in the cluster
+after the fact (post-mortem analysis).
 
+Audit Policy includes a set of rules that determine which events are logged and how detailed the logs are.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+- level: None #how detailed the rule's logs are. Can be: None, Metadata, Request, RequestResponse
+  resources: #matches object types with the applicable rule 
+  - group: ""
+    resources: ["pods", "services"]
+  namespaces: ["test"] #optional, limits to namespaces
 
+kube-apiserver.yaml
+--audit-policy-file - audit policy config file 
+--audit-log-path - location of log output files
+--audit-log-maxage - number of days to keep old log files 
+--audit-log-maxbackup - number of old log files to keep 
 
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+# Log changes to Namespaces at the RequestResponse level.
+- level: RequestResponse
+  resources:
+  - group: ""
+    resources: ["namespaces"]
 
+# Log pod changes in the audit-test Namespace at Request level.
+- level: Request
+  resources:
+  - group: ""
+    resources: ["pods"]
+  namespaces: ["audit-test"]
 
+# Log all ConfigMap and Secret changes at the Metadata level.
+- level: Metadata
+  resources:
+  - group: ""
+    resources: ["secrets", "configmaps"]
 
+# Catch-all - Log all requests at the metadata level.
+- level: Metadata
 
-
-
+kube-apiserver.yaml
+- --audit-policy-file=/etc/kubernetes/audit-policy.yaml 
+- --audit-log-path=/var/log/k8s-audit/k8s-audit.log
+- --audit-log-maxage=30
+- --audit-log-maxbackup=10
+VolumeMounts and Volumes
