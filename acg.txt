@@ -496,29 +496,170 @@ and | base64 --decode
 
 19. Images
 
+Software Vulnerability - flaw or weakness in a piece of software that can be used by an attacker.
+When possible, use images that contain up-to-date software with security patches.
 
+Some images may not be well-designed, and may contain additional, unneeded software.
+Additional software comes with additional risk of vulnerabilities.
+Try to minimize the amount of unnecessary software in the images you use.
+
+Compromised Images - attackers may purposefully create images that contain malicious software.
+Trusted sources!!!
 
 20. Whitelisting Registries
 
+One way to restrict image registries is the OPA Gatekeeper.
 
+Remember to create the template for both regular and init containers!
+
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sAllowedRepos
+metadata:
+  name: whitelist-dockerhub
+spec:
+  match:
+    kinds:
+    - apiGroups: [""]
+      kinds: ["Pod"]
+  parameters:
+    repos:
+    - "docker.io"
 
 21. Image Validation
 
+Images can be signed using a hash generated from the unique contents of the image.
+Signatures can be used to verify that the contents of the image haven't been tampered with.
 
+Supply a SHA-256 hash to validate an image.
+image: busybox:1.33.1@sha256:12451937865981764981264dsf53
 
 22. Static Analysis
 
+Static Analysis - looking at source code or config to identify potential security issues.
+One way to harden the security of your images is to analyze the Dockerfiles used to create them. 
 
+Things to look for:
+- USER root/0 (FINAL ONE and also default if none seen)
+- :latest tag in FROMs
+- unnecessary software
+- sensitive data - no sensitive data like passwords, API keys in the image. Instead, Secrets.
+
+YAML Analysis:
+- host namespaces
+- privileged mode
+- :latest tag
+- running as root/0
 
 23. Vulnerability Scanning
 
+Trivy - CLI tool to scan container imgs for vulnerabilities.
 
+trivy image nginx:1.14.1
+trivy nginx:1.14.1 - older versions
 
 24. Vulnerability Scanning with an Admission Controller 
 
+Admission Controllers 
+
+Intercept requests to the K8s API.
+They can approve, deny or modify the request before changes are made.
+
+ImagePolicyWebhook controller
+Sends a request to an external webhook containing information about the image being used.
+The webhook can approve or deny the creation of the workload based on the image.
+
+Setting up an image scanner
+In order to scan incoming images using ImagePolicyWebhook, we need an app that can receive the webhook requests 
+and perform the image scanning.
+
+The ImagePolicyWebhook admission controller sends a JSON request to an external service.
+Ext service provides a JSON response indicating whether the images are allowed or disallowed.
+
+Configuring the ImagePolicyWebhook Admission Controller
+
+sudo mkdir /etc/kubernetes/admission-control 
+External service uses a self-signed cert.
+sudo wget -O /etc/kubernetes/admission-control/imagepolicywebhook-ca.crt https://link-from-repo
+Same with api-server-client.crt and api-server-client.key 
+
+sudo vi /etc/kubernetes/admission-control/admission-control.conf
+apiVersion: apiserver.config.k8s.io/v1 
+kind: AdmissionConfiguration
+plugins:
+- name: ImagePolicyWebhook
+NOW EITHER:
+  path: /path/to/confing.conf 
+OR:
+  configuration:
+    imagePolicy:
+      kubeConfigFile: /etc/kubernetes/admission-control/imagepolicywebhook_backend.kubeconfig 
+      allowTTL: 50
+      denyTTL: 50
+      retryBackoff: 500
+      defaultAllow: true (if false, if external service is down - deny)
+
+vi /etc/kubernetes/admission-control/imagepolicywebhook_backend.kubeconfig
+apiVersion: v1 
+kind: Config 
+clusters:
+- name: trivy-k8s-webhook
+  cluster:
+    certificate-authority: /etc/kubernetes/admission-control/imagepolicywebhook-ca.crt
+    server: https://acg.trivy.k8s.webhook:8090/scan !!!!!! ALWAYS HTTPS !!!!!!
+contexts:
+- name: trivy-k8s-webhook
+  context:
+    cluster: trivy-k8s-webhook
+    user: api-server
+current-context: trivy-k8s-webhook
+preferences: {}
+users:
+- name: api-server
+  user:
+    client-certificate: /etc/kubenetes/admission-control/api-server-client.crt 
+    client-key: /etc/kubenetes/admission-control/api-server-client.key 
+
+vi kube-apiserver.yaml
+--enable-admission-plugins=NodeRestriction,ImagePolicyWebhook
+--admission-control-config-file=/etc/kubernetes/admission-control/admission-control.conf 
+Set up volume mounts!
+
+25. Behavioral Analytics
+
+Behavioral Analytics - process of observing what is going on in the system and identifying abnormal and potentially malicious events.
+
+Falco - open-source project created by Sysdig.
+Monitors system calls at runtime and alerts on any suspicious activity based upon configurable rules.
+
+Examples:
+- privilege escalation
+- file access (eg. accessing /usr/bin, /)
+- binaries (eg. opening a shell)
+
+Different ways to run Falco - command line, service, web server etc.
+
+CLI:
+-r <file> - supply a custom rules file 
+-M <seconds> - run Falco for a set number of seconds
+falco -r rules.yml -M 45
+
+A Falco rule defines a set of conditions that will trigger an alert. Defined in YAMLs.
+
+- rule: spawned_process_in_test_container
+  desc: A process was spawned in the test container.
+  condition: container.name = "falco-test" and evt.type = execve
+  output: "%evt.time,%user.uid,%proc.name"
+  priority: WARNING
 
 
-25.
+
+26. Immutable Containers
+
+
+
+27. Audit Logging
+
+
 
 
 
