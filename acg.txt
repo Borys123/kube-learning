@@ -459,9 +459,70 @@ spec:
 
 mTLS - both communicating parties fully authenticate each other and all communications are encrypted
 
+Kubernetes API - allows to obtain certs which you can use un your applications.
+Certificate Authority - certificates provided by the API will be generated from a central CA, which can be used for trust purposes.
+Programmatic Certificates - can obtain certs programatically using the API.
+
+CertificateSigningRequest - requestor creates a CSR object to request a new cet 
+Approve/Deny - CSR can be approved or denied 
+RBAC - permissions related to cert signing can be managed via RBAC 
+
+Create a CSR
+sudo apt install -y golang-cfssl
+huge cfssl genkey command
+cat sercer.csr | base64 
+
+vi tls-svc-csr.yaml
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: tls-svc-csr
+spec:
+  request: |
+    <base64stuff>
+  signerName: kubernetes.io/kubelet-serving
+  usages:
+  - digital signature
+  - key encipherment
+  - server auth
+
+k certificate approve tls-svc-csr
+
+k get csr tls-svc-csr -oyaml
+or
+k get csr tls-svc-csr -o jsonpath='{.status.certificate}'
+
+and | base64 --decode
+
+19. Images
 
 
-19. 
+
+20. Whitelisting Registries
+
+
+
+21. Image Validation
+
+
+
+22. Static Analysis
+
+
+
+23. Vulnerability Scanning
+
+
+
+24. Vulnerability Scanning with an Admission Controller 
+
+
+
+25.
+
+
+
+
 
 
 
