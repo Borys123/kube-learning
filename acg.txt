@@ -211,7 +211,258 @@ When possible, limit access to the cluster network from outside.
 Linux Security kernel module. Provides granular access control for programs running on Linux systems. Use AppArmor to control
 and limit what a program can do within the host OS.
 
+Complain mode - report on what a program is doing. Use for discovery of behavior.
+Enforce mode - actively prevent program from doing anything not allowed.
+
+Need profile on all nodes!
+
+sudo apparmor_parser /path/to/file
+-C for complain mode
+
+metadata:
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/nginx: localhost/k8s-deny-write
+
+sudo vi /etc/apparmor.d/deny-write
+sudo apparmor_parser /etc/apparmor.d/deny-write
+
+13. securityContexts
+
+A portion of the Pod and container spec that allows to provide special security and access control settings
+at the Pod and container level.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+spec:
+  securityContext:
+    runAsUser: 1000
+  containers:
+  - name: nginx
+    image: nginx
+    securityContext:
+      runAsUser: 2000
+      allowPrivilegeEscalation: false
+
+14. PodSecurityPolicies
+
+PSPs allow cluster admins to control what security-related configs Pods are allowed to run with.
+Use them to automatically enforce desired security configurations within the cluster.
+
+PodSecurityPolicy:
+X Privileged container mode 
+V Allow privilege escalation 
+X Run as root
+V Allowed volume types 
+X Access host network 
+
+They can also change pods by providing default for certain values.
+
+PodSecurityPolicy:
+X Allow privilege escalation 
+V Must run as user 1337
+
+If user didn't provide a user - will be 1337.
+If they provided the user, Pod would get rejected. 
+
+What they can control:
+- privileged mode
+- host namespaces
+- volumes
+- allowedHostPath (specify allowed paths)
+- runAsUser/runAsGroup
+
+PSPs are being deprecated!!!
+
+Turn these on with admission controller:
+--enable-admission-plugins=PodSecurityPolicy
+
+A Pod must satisfy at least one PSP to be allowed. If you enable PSP without any policy, no Pods allowed!!!
+
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy 
+metadata:
+  name: my-psp 
+spec:
+  privileged: false 
+  runAsUser:
+    rule: RunAsAny
+
+Now authorize the use of the policy:
+
+apiVersion: rbac.authorization.k8s.io/v1 
+kind: ClusterRole 
+metadata:
+  name: cr-use-psp 
+rulse:
+- apiGroups: ['policy']
+  resources: ['podsecuritypolicies']
+  verbs: ['use']
+  resourceNames:
+  - my-psp
+
+For a user to use a PSP in their Pods, they must be authorized to use the policy via RBAC.
+The use verb in a Role or ClusterRole allows a user to use PSP.
+Every new Pod must be allowed by at least one policy which the user is authorized to use. If not, won't create Pods!
+
+Two ways of authorizing policies:
+USER:
+- The user creating the Pod has access to use the Policy.
+- Control which users can create Pods according to which policies.
+- Doesn't work for Pods that are not created directly by users (think Deployments etc.).
+
+SA:
+- Pod's SA has access to the policy.
+- Works with indirectly-created Pods.
+- Preferred method in most cases.
+
+vi kube-apiserver.yaml 
+
+--enable-admission-plugins=NodeRestriction,PodSecurityPolicy 
+
+vi psp-nonpriv.yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy 
+metadata:
+  name: psp-nonpriv
+spec:
+  privileged: false 
+  runAsUser:
+    rule: RunAsAny
+  fsGroup:
+    rule: RunAsAny
+  seLinux:
+    rule: RunAsAny 
+  supplementalGroups:
+    rule: RunAsAny 
+  volumes:
+  - configMap
+  - donwardApi
+  - emptyDir
+  - persistentVolumeClaim
+  - secret
+  - projected
+
+k create ns psp-test 
+k create sa psp-test-sa -n psp-test
+
+vi cr-use-psp-psp-nopriv.yaml 
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cr-use-psp-psp-nonpriv
+rules:
+- apiGroups: ['policy']
+  resources: ['podsecuritypolicies']
+  verbs: ['use']
+  resourceNames:
+  - psp-nonpriv
+
+RoleBind it.
+
+vi pod-psp-test.yaml 
+
+spec:
+  serviceAccountName: psp-test-sa 
+
+15. OPA Gatekeeper
+
+OPA Gatekeeper allows to enforce highly-customizable policies on any kind of k8s object at creation time.
+Policies are defined using the OPA Constraint Framework.
+
+Examples:
+- image repos (imgs only come from pre-approved repos)
+- resource limits (all Pods must specify resource limits)
+- labels (all deployments must include certain informational labels)
+
+OPA Gatekeeper Constraint:
+All Deployments must have a contact label listing the name  of the user who triggered the Deployment.
+
+CONSTRAINT TEMPLATE 
+Defines the schema and the Rego logic that will enforce that constraint.
+
+CONSTRAINT
+Attaches the logic in a Constraint Template to incoming k8s objects alongside any parameters defined in the template.
+
+TEMPLATE = NEW KIND
+
+apiVersion: constraints.gatekeeper.sh/v1beta1 
+kind: K8sRequiredLabels
+metadata:
+  name: dep-must-have-contact
+spec:
+  match:
+    kinds:
+    - apiGroups: [""]
+      kinds: ["Deployment"]
+  parameters:
+    labels: ["contact"]
+
+16. Secrets
+
+How to get secret data?
+
+k get -oyaml <secret>
+base64 --decode
+
+17. RuntimeSandboxes
+
+CR Sandbox is a specialized container runtime providing extra layers of process isolation and greater security.
+
+Use cases:
+- untrusted workloads
+- small and simple workloads (no need for direct host access, don't mind performance tradeoffs)
+- multi-tenant environments (eg. customers can run stuff in the cluster)
+
+Usually comes at the cost of performance.
+
+gVisor/runsc 
+
+gVIsor - Linux Application Kernel that runs in the host OS, offering an additional layer of isolation between host OS and containers.
+Something betweeen containerization and a VM.
+runsc - OCI-compliant container runtime that integrates gVisor with apps like K8s.
+
+Kata Containers 
+
+Provide an additional layer of isolation by transparently running containers inside lightweight VMs.
+
+Build a Sandbox
+
+- install gVisor Runtime
+- configure containerd to interact with runsc
+- create a RuntimeClass to designate which Pods need to use the sandboxed runtime
+
+ON ALL NODES
+Install gVisor (curl GPG, apt-key add, add-apt, install runsc)
+vi /etc/containerd/config.toml
+disabled_plugins = ["io.containerd.internal.v1.restart"]
+[plugins]
+Add runsc block here, under runc config
+Find Linux plugin (runtime.v1.linux), shim_debug = true 
+systemctl restart containerd 
+
+vi runsc-sandbox.yaml
+
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass 
+metadata:
+  name: runsc-sandbox
+handler: runsc 
+
+in Pod:
+spec:
+  runtimeClassName: runsc-sandbox
+
+18. mTLS and certificates
+
+mTLS - both communicating parties fully authenticate each other and all communications are encrypted
 
 
-13.
+
+19. 
+
+
+
 
