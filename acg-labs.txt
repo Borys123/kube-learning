@@ -119,3 +119,76 @@ vi rb-auth-sa-psp.yml
     name: auth-sa
     namespace: auth
 
+5. Secrets
+
+kubectl get secret db-pass -oyaml -n users
+  copy password
+echo fasjdlkfj= | base64 --decode > ./dbpass.txt
+echo "TrustNo1" | base64
+kubectl edit secret db-pass -n users
+  paste in the pass
+RECREATE THE POD NOW!!!
+
+6. Secure Runtime Sandbox
+
+INSTALL GVISOR
+
+-- ON ALL NDOES --
+
+curl -fsSL https://gvisor.dev/archive.key | sudo apt-key add -
+sudo add-apt-repository "deb blabla release main"
+sudo apt-get update
+sudo apt-get install -y runsc
+
+sudo vi /etc/containerd/config.toml
+disabled_plugins = ["io.containerd.internal.v1.restart"]
+[plugins]
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+      runtime_type = "io.containerd.runsc.v1"
+  [plugins."io.containerd.runtime.v1.linux"]
+    shim_debug = true
+
+-- ON CONTROLPLANE --
+
+vi runsc-sandbox.yml
+  apiVersion: node.k8s.io/v1
+  kind: RuntimeClass
+  metadata:
+    name: runsc-sandbox
+  handler: runsc 
+
+Modify containers
+  spec:
+    runtimeClassName: runsc-sandbox
+
+7. Dockerfile analysis
+
+FROM nginx: 1.19.10
+RUN apt-get update && apt-get install -y mathblasters //DELETE THIS
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+
+FROM nginx:1.19.10
+USER root
+RUN useradd -ms /bin/bash nginxuser
+USER root //USER nginxuser
+ENTRYPOINT ...
+EXPOSE 80
+CMD ...
+
+FROM busybox:1.33.1
+COPY db_connect /usr/local/bin/
+ENV db_password=hunter2 //PASS AS KUBE SECRET, DELETE THIS LINE
+CMD ["db_connect", "--user admin", "--password "]
+
+8. Kube yaml analysis 
+
+image: latest //set to some version
+
+hostNetwork: false
+
+securityContext:
+  privileged: false 
+
+  
