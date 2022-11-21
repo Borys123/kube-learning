@@ -1,0 +1,121 @@
+1. Verify binaries
+cd k8s-binaries/
+ls
+  kube-apiserver
+  kubectl
+  kubelet
+  version.txt
+cat version.txt
+  v1.20.4
+VERSION=$(cat version.txt)
+curl -LO "https://dl.k8s.io/$VERSION/bin/linux/amd64/kubectl.sha256"
+curl -LO "https://dl.k8s.io/$VERSION/bin/linux/amd64/kubelet.sha256"
+curl -LO "https://dl.k8s.io/$VERSION/bin/linux/amd64/kube-apiserver.sha256"
+echo "$(<kubectl.sha256) kubectl" | sha256sum --check
+  OK
+echo "$(<kubectl.sha256) kubelet" | sha256sum --check
+  FAILED
+echo "$(<kubectl.sha256) kube-apiserver" | sha256sum --check
+  OK
+
+2. pods/log !!!
+
+3. TLS Termination
+openssl req -nodes -new -x509 -keyout accounts.key -out accounts.crt -subj "/CN=accounts.svc"
+vi accounts-tls-certs-secret.yml 
+  apiVersion: v1
+  kind: Secret
+  type: kubernetes.io/tls 
+  metadata:
+    name: accounts-tls-certs
+    namespace: accounts 
+  data:
+    tls.crt: |
+      falkdfhkjdashgfasjkdlgh
+    tls.key: |
+      faksjdhfjkahdffasdgasgg
+vi accounts-tls-ingress.yml 
+  apiVersion: networking.k8s.io/v1
+  kind: Ingress 
+  metadata:
+    name: accounts-tls
+    namespace: accounts 
+  spec:
+    tls:
+    - hosts:
+        - accounts.svc
+      secretName: accounts-tls-certs
+    rules:
+    - host: accounts.svc
+      http: 
+        paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: accounts-svc
+              port:
+                number: 80
+
+4. PodSecurityPolicy
+
+ENABLE ADMISSION CONTROLLER
+
+sudo vi /etc/kubernetes/manifests/kube-apiserver.yaml
+  - command:
+    - --enable-admission-plugins=NodeRestriction,PodSecurityPolicy
+
+CREATE PodSecurityPolicy
+
+vi psp-no-privileged.yml
+  apiVersion: policy/v1beta1
+  kind: PodSecurityPolicy
+  metadata:
+    name: psp-no-privileged
+  spec:
+    privileged: false
+    runAsUser:
+      rule: RunAsAny
+    fsGroup:
+      rule: RunAsAny
+    seLinux:
+      rule: RunAsAny
+    supplementalGroups:
+      rule: RunAsAny
+    volumes:
+    - configMap
+    - downwardAPI
+    - emptyDir
+    - persistentVolumeClaim
+    - secret
+    - projected
+
+CREATE RBAC
+
+vi cr-use-psp-no-privileged.yml 
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: cr-use-psp-no-privileged
+  rules:
+  - apiGroups: ['policy']
+    resources: ['podsecuritypolicies']
+    verbs: ['use']
+    resourceNames:
+    - psp-no-privileged
+
+vi rb-auth-sa-psp.yml
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: rb-auth-sa-psp
+    namespace: auth
+  roleRef:
+    kind: ClusterRole
+    name: cr-use-psp-no-privileged
+    apiGroup: rbac.authorization.k8s.io
+  subjects:
+  - kind: ServiceAccount
+    name: auth-sa
+    namespace: auth
+
