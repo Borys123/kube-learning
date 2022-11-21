@@ -191,4 +191,111 @@ hostNetwork: false
 securityContext:
   privileged: false 
 
-  
+9. Trivy
+
+kubectl get po -n questionablesoft
+kubectl describe pod -n questionablesoft questionablesoft-api
+  busybox:1.33.1
+webserver
+  nginx:1.19.10
+web-admin
+  nginx:1.14.2
+
+trivy image busybox:1.33.1 > busybox:1.33.1.log
+
+10. Automate image vulnerability scanning
+
+CONFIGURE ADMISSION CONTROLLER
+
+vi /etc/kubernetes/admission-control/admission-control.conf
+  apiVersion: apiserver.config.k8s.io/v1
+  kind: AdmissionConfiguration
+  plugins:
+  - name: ImagePolicyWebhook
+    configuration:
+      ImagePolicy:
+        kubeConfigFile: /etc/kubernetes/admission-control/imagepolicy_backend.kubeconfig
+        allowTTL: 50
+        denyTTL: 50
+        retryBackoff: 500
+        defaultAllow: false 
+
+EDIT THE ADMISSIONS CONTROLLER'S KUBECONFIG TO POINT TO THE BACKEND WEBHOOK
+
+vi /etc/kubernetes/admission-control/imagepolicy_backend.kubeconfig
+
+add
+  server: https://acg.trivy.k8s.webhook:8090/scan
+
+ENABLE ANY NECESSARY ADMISSION CONTROL plugins
+
+vi /etc/kubernetes/manifests/kube-apiserver.yaml
+- command:
+  - kube-apiserver
+    - --enable-admission-plugins=NodeRestriction,ImagePolicyWebhook
+
+11. Falco
+
+CREATE A FALCO RULES FILE CONFIGURED TO SCAN THE CONTAINER 
+
+vi nginx-rules.yml
+  - rule: spawned_process_in_nginx_container
+    desc: A process was spawned in the Nginx container. 
+    condition: container.name = "nginx" and evt.type = execve
+    output: "%evt.time,%proc.name,%user.uid,%container.id,%container.name,%container.image"
+    priority: WARNING
+
+RUN FALCO, SAVE REPORT TO A FILE
+
+falco --list
+
+sudo falco -r nginx-rules.yml -M 45 > falco-report.log
+
+12. Check k8s pods for container immutability
+
+kubectl get po -n dev -oyaml web-frontend
+
+allowPrivilegeEscalation: false - immutable 
+runAsUser: 0 - not immutable!
+
+allowPrivilegeEscalation: false - immutable
+readOnlyRootFilesystem: true - immutable 
+
+allowPrivilegeEscalation: false - immutable 
+readOnlyRootFilesystem: false - not immutable! 
+
+13. Configure Audit Logging
+
+IMPLEMENT AUDIT POLICY RULES 
+
+apiVersion: audit.k8s.io/v1
+kind: Policy 
+rules:
+# Log requests and response bodies for all changes to Namespaces. 
+- level: RequestResponse
+  resources:
+  - group: ""
+    resources: ["namespaces"]
+# Log request bodies (but not response bodies) for changes to Pods and Services in the web Namespace.
+- level: Request
+  resources:
+  - group: ""
+    resources: ["pods","services"]
+  namespaces: ["web"]
+# Log metadata for all changes to Secrets.
+- level: Metedata
+  resources:
+  - group: ""
+    resources: ["secrets"]
+# Create a catchall rule to log metadata for all other requests.
+- level: Metadata
+
+CONFIGURE AUDIT LOGGING IN KUBE-APISERVER
+
+vi /etc/kubernetes/manifests/kube-apiserver.yaml 
+  - command:
+    - --audit-policy-file=/etc/kubernetes/audit-policy.yaml
+    - --audit-log-path=/var/log/kubernetes/k8s-audit.log
+    - --audit-log-maxage=60
+    - --audit-log-maxbackup=1
+  And configure volumes/volumeMounts.
