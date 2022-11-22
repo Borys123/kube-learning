@@ -1,0 +1,85 @@
+1. CIS Benchmark
+
+sudo vi /var/lib/kubelet/config.yaml
+  authentication:
+    anonymous:
+      enabled: false
+  authorization:
+    mode: Webhook
+sudo systemctl restart kubelet
+
+sudo vi /etc/kubernetes/manifests/kube-apiserver.yaml
+  - command:
+    - --profilig=false
+    - --authorization-mode=Node,RBAC
+
+sudo mv /etc/kubernetes/manifests/etcd.yaml /etc/kubernetes/
+wait for etcd shutdown
+sudo vi /etc/kubernetes/etcd.yaml
+  - command:  
+    - --client-cert-auth=true
+move back
+
+2. Admission control
+
+ImagePolicyWebhook
+--admission-control-config-file=
+
+3. Trivy
+
+kubectl get pods --output=custom-columns="NAME:.metadata.name,IMAGE:.spec.containers[*].image"
+trivy image -s HIGH,CRITICAL <<name>>
+
+4. AppArmor
+
+sudo apparmor_parser <<profile>>
+
+vi yaml
+  metadata:
+    annotations:
+      container.apparmor.security.beta.kubernetes.io/busybox: localhost/k8s-deny-write
+
+5. Falco
+
+On worker node!!!
+
+vi falco_rules.yml
+  - rule: spawned_process_in_monitor_container
+    desc: A process was spawned in the Monitor container.
+    condition: container.name = "monitor" and evt.type = execve 
+    output: "%evt.time,%container.id,%container.image,%user.uid,%proc.name"
+    priority: NOTICE
+
+sudo falco -M 45 -r falco_rules.yml > falco_output.log
+
+6. Audit Policy 
+
+https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/
+
+sudo vi /etc/kubernetes/manifests/kube-apiserver.yaml
+  - --audit-log-policy-file=
+  - --audit-log-path=
+  - --audit-log-maxage=
+  - --audit-log-maxbackup=
+
+7. Static analysis
+
+DOCKER: latest, user root
+K8S: securityContext: privileged false, runAsUser 0
+IMMUTABLE: does not have access to elev privs, cannot write to the container filesystem
+
+8. RuntimeClass, gVisor
+
+runsc
+
+in Pod:
+  spec:
+    runtimeClassName: myclass
+
+9. PodSecurityPolicy
+
+Create PSP from:
+https://v1-24.docs.kubernetes.io/docs/concepts/security/pod-security-policy/
+Remember to include all default fields (RunAsAny, volumes: - '*')
+
+Create SA, clusterrole (--reource=podsecuritypolicy, resource-name=abcxyz), clusterrolebinding
