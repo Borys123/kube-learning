@@ -75,3 +75,5 @@ securityContext:
 add an emptyDir: {}
 
 
+17. 
+netstat -plnt
