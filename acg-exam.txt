@@ -76,7 +76,7 @@ in Pod:
   spec:
     runtimeClassName: myclass
 
-9. PodSecurityPolicy
+9. PodSecurityPolicy - Not needed?
 
 Create PSP from:
 https://v1-24.docs.kubernetes.io/docs/concepts/security/pod-security-policy/
