@@ -6,10 +6,13 @@ k config view --raw
 /etc/falco/
 cat /var/log/syslog | grep falco 
 
-"Launch Package Management Process in Container"
-spawned_process
-container
-package_mgmt_procs
+crictl ps -id <container-id>
+crictl pods -id <pod-id>
+
+output: >
+    Package management process launched in container %evt.time,%container.id,%container.name,%user.name
+
+falco | grep "Package management"
 
 3.
 --kubernetes-service-node-port=0
