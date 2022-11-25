@@ -80,3 +80,9 @@ add an emptyDir: {}
 
 17. 
 netstat -plnt
+ls -lh /proc/9591/exe 
+kill -9 9591
+
+18.
+k get clusterrolebinding -oyaml | grep gianna -A10 -B20
+k edit clusterrole gianna 
